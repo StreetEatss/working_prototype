@@ -1,0 +1,114 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model FoodTruck {
+  id                String         @id @default(uuid())
+  name              String
+  description       String?
+  cuisineType       String?
+  imageUrl          String?
+  venmoHandle       String?
+  defaultLocation   String?
+  defaultLatitude   Float?
+  defaultLongitude  Float?
+  typicalSchedule   Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  menuItems         MenuItem[]
+  statusUpdates     StatusUpdate[]
+  ownerAccess       OwnerTruckAccess[]
+}
+
+model Owner {
+  id           String             @id @default(uuid())
+  name         String
+  email        String             @unique
+  passwordHash String
+  createdAt    DateTime           @default(now())
+  trucks       OwnerTruckAccess[]
+}
+
+model OwnerTruckAccess {
+  id        String    @id @default(uuid())
+  owner     Owner     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId   String
+  truck     FoodTruck @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  truckId   String
+  role      OwnerRole @default(OWNER)
+  createdAt DateTime  @default(now())
+
+  @@unique([ownerId, truckId])
+}
+
+enum OwnerRole {
+  OWNER
+  MANAGER
+}
+
+model MenuItem {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  priceCents  Int?
+  imageUrl    String?
+  truck       FoodTruck    @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  truckId     String
+  reviews     MenuReview[]
+  isFeatured  Boolean      @default(false)
+}
+
+model MenuReview {
+  id             String     @id @default(uuid())
+  menuItem       MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  menuItemId     String
+  rating         Int
+  tasteRating    Int?
+  valueRating    Int?
+  comment        String?
+  photoUrl       String?
+  reporterName   String?
+  createdAt      DateTime   @default(now())
+  locationSource String?    // e.g., crowd, owner, admin
+}
+
+model StatusUpdate {
+  id             String        @id @default(uuid())
+  truck          FoodTruck     @relation(fields: [truckId], references: [id], onDelete: Cascade)
+  truckId        String
+  status         TruckStatus
+  latitude       Float?
+  longitude      Float?
+  note           String?
+  reporterName   String?
+  reliability    Float?        // derived QC score 0-1
+  photoUrl       String?
+  createdAt      DateTime      @default(now())
+  source         StatusSource  @default(CROWD)
+}
+
+enum TruckStatus {
+  OPEN
+  CLOSED
+  MOVED
+  UNKNOWN
+}
+
+enum StatusSource {
+  CROWD
+  OWNER
+  ADMIN
+  AUTOMATION
+}
