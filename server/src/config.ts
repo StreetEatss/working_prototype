@@ -8,6 +8,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(8),
   NODE_ENV: z.string().default("development"),
+  FRONTEND_URL: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

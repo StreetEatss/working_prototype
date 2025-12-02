@@ -10,7 +10,11 @@ const authRoutes_1 = __importDefault(require("./routes/authRoutes"));
 const truckRoutes_1 = __importDefault(require("./routes/truckRoutes"));
 const ownerRoutes_1 = __importDefault(require("./routes/ownerRoutes"));
 const app = (0, express_1.default)();
-app.use((0, cors_1.default)({ origin: /localhost/, credentials: true }));
+// CORS configuration - allows localhost in dev, or specific origins in production
+const corsOrigin = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',')
+    : /localhost/;
+app.use((0, cors_1.default)({ origin: corsOrigin, credentials: true }));
 app.use(express_1.default.json({ limit: "1mb" }));
 app.use(express_1.default.urlencoded({ extended: true }));
 app.get("/api/health", (_req, res) => {

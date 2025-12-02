@@ -174,6 +174,7 @@ npx prisma studio
 DATABASE_URL="postgresql://streeteats:streeteats@localhost:5434/streeteats"
 JWT_SECRET="your-secret-key-here"
 PORT=4000
+FRONTEND_URL="http://localhost:5173"  # Optional: for production CORS
 ```
 
 ### Frontend (`client/.env`)
@@ -212,6 +213,20 @@ VITE_API_URL=http://localhost:4000
 - `npm run dev` - Start Vite development server
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
+
+## Deployment
+
+To deploy StreetEats to production (web hosting + cloud database), see our deployment guides:
+
+- **[DEPLOYMENT_COMPARISON.md](./DEPLOYMENT_COMPARISON.md)** - Compare all deployment options (Railway, Render, Vercel, Fly.io, etc.)
+- **[RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md)** - Step-by-step Railway deployment (easiest option)
+- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Comprehensive guide covering all platforms
+
+**Quick recommendations:**
+- **Easiest:** [Railway](https://railway.app) - Deploy everything in one place
+- **Free tier:** [Render](https://render.com) - Great for testing/demos
+- **Best performance:** Vercel (frontend) + Railway (backend)
+- **Global edge:** [Fly.io](https://fly.io) - Deploy close to users worldwide
 
 ## Future Enhancements
 - Owner dashboard for schedule editing and review management
