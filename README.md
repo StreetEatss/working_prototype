@@ -1,34 +1,25 @@
 # StreetEats Web App
 
-Mobile-first web experience for Penn/University City students to discover food trucks, share live status updates, and review menu items. The app ships with a Postgres-backed API plus a Vite/React frontend optimized for mobile browsers.
+Mobile-first web experience for Penn/University City students to discover food trucks, share live status updates, and review menu items. The app ships with a SQLite-backed API plus a Vite/React frontend optimized for mobile browsers.
 
 ## Tech Stack
 - **Frontend:** React + Vite + TypeScript, React Query, React Leaflet, React Router
 - **Backend:** Node.js + Express + TypeScript, Prisma ORM
-- **Database:** PostgreSQL (Docker compose for local dev)
+- **Database:** SQLite (no Docker required!)
 
 ## Prerequisites
 - **Node.js** 20 or higher
 - **npm** 8 or higher
-- **Docker Desktop** (for running PostgreSQL locally)
 
 ## Quick Start
 
 ### 1. Clone and Navigate
 ```bash
+git clone <your-repo-url>
 cd streeteats
 ```
 
-### 2. Start PostgreSQL Database
-```bash
-docker compose up -d
-```
-This starts a PostgreSQL container on port `5434`. Verify it's running with:
-```bash
-docker compose ps
-```
-
-### 3. Set Up Backend
+### 2. Set Up Backend
 
 Navigate to the server directory:
 ```bash
@@ -41,10 +32,13 @@ npm install
 ```
 
 Set up environment variables:
-```bash
-cp .env.example .env
+Create a `.env` file in the `server` directory with:
+```env
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="your-secret-key-change-in-production"
+PORT=4000
+NODE_ENV=development
 ```
-Edit `.env` if needed (defaults should work for local development).
 
 Run database migrations:
 ```bash
@@ -62,7 +56,7 @@ npm run dev
 ```
 The API will be available at `http://localhost:4000`
 
-### 4. Set Up Frontend
+### 3. Set Up Frontend
 
 Open a new terminal window and navigate to the client directory:
 ```bash
@@ -102,8 +96,10 @@ streeteats/
 │   │   ├── routes/       # API route definitions
 │   │   ├── middleware/   # Auth and other middleware
 │   │   └── lib/          # Prisma client and utilities
-│   └── prisma/       # Database schema and migrations
-└── docker-compose.yml  # PostgreSQL container configuration
+│   ├── prisma/       # Database schema and migrations
+│   └── dev.db        # SQLite database file (created after migration)
+└── .github/
+    └── workflows/    # GitHub Actions deployment config
 ```
 
 ## API Endpoints
@@ -170,34 +166,82 @@ npx prisma studio
 ## Environment Variables
 
 ### Backend (`server/.env`)
-```
-DATABASE_URL="postgresql://streeteats:streeteats@localhost:5434/streeteats"
+```env
+DATABASE_URL="file:./dev.db"
 JWT_SECRET="your-secret-key-here"
 PORT=4000
-FRONTEND_URL="http://localhost:5173"  # Optional: for production CORS
+NODE_ENV=development
 ```
 
 ### Frontend (`client/.env`)
-```
+```env
 VITE_API_URL=http://localhost:4000
 ```
 
+**Note:** For production deployment, set `VITE_API_URL` to your backend API URL.
+
+## Deployment to GitHub Pages
+
+The project includes a GitHub Actions workflow that automatically deploys the frontend to GitHub Pages when you push to the `main` branch.
+
+### Setup Steps
+
+1. **Enable GitHub Pages in your repository:**
+   - Go to Settings → Pages
+   - Source: Deploy from a branch
+   - Branch: `gh-pages` (will be created automatically)
+   - Folder: `/ (root)`
+
+2. **Set up repository secrets (optional):**
+   - Go to Settings → Secrets and variables → Actions
+   - Add `VITE_API_URL` if your backend is hosted elsewhere
+   - Default: `http://localhost:4000` (for local development)
+
+3. **Push to main branch:**
+   ```bash
+   git add .
+   git commit -m "Deploy to GitHub Pages"
+   git push origin main
+   ```
+
+The workflow will automatically:
+- Build the frontend
+- Deploy to GitHub Pages
+- Make your app available at `https://<username>.github.io/working_prototype/`
+
+### Backend Deployment
+
+**Important:** GitHub Pages only hosts static files. The backend API needs to be deployed separately. Options include:
+
+- **Railway** (recommended): https://railway.app
+- **Render**: https://render.com
+- **Heroku**: https://heroku.com
+- **Fly.io**: https://fly.io
+
+After deploying the backend, update the `VITE_API_URL` secret in GitHub Actions to point to your deployed backend URL.
+
 ## Troubleshooting
 
-### Database Connection Issues
-- Ensure Docker Desktop is running
-- Check that the PostgreSQL container is up: `docker compose ps`
-- Verify the `DATABASE_URL` in `server/.env` matches docker-compose settings
+### Database Issues
+- The SQLite database file (`dev.db`) is created automatically after running migrations
+- If you get "database locked" errors, make sure no other process is using the database
+- To reset: delete `server/prisma/dev.db` and run `npm run prisma:migrate` again
 
 ### Port Already in Use
 - Backend (4000): Change `PORT` in `server/.env` or stop the process using port 4000
 - Frontend (5173): Vite will automatically try the next available port
-- Database (5434): Change the port mapping in `docker-compose.yml`
 
 ### Frontend Can't Reach Backend
 - Verify `VITE_API_URL` in `client/.env` points to the correct backend URL
 - Check that the backend server is running
 - Ensure CORS is properly configured (default allows localhost)
+- For production, ensure your backend CORS settings allow your GitHub Pages domain
+
+### GitHub Pages Deployment Issues
+- Check the Actions tab in your GitHub repository for workflow errors
+- Ensure GitHub Pages is enabled in repository settings
+- Verify the base path in `vite.config.ts` matches your repository name
+- Check that `VITE_API_URL` is set correctly in the workflow or as a secret
 
 ## Development Scripts
 
@@ -214,19 +258,30 @@ VITE_API_URL=http://localhost:4000
 - `npm run build` - Build for production
 - `npm run preview` - Preview production build
 
-## Deployment
+## Migration from PostgreSQL
 
-To deploy StreetEats to production (web hosting + cloud database), see our deployment guides:
+If you're migrating from the old PostgreSQL setup:
 
-- **[DEPLOYMENT_COMPARISON.md](./DEPLOYMENT_COMPARISON.md)** - Compare all deployment options (Railway, Render, Vercel, Fly.io, etc.)
-- **[RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md)** - Step-by-step Railway deployment (easiest option)
-- **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Comprehensive guide covering all platforms
+1. Export your data (if needed):
+   ```bash
+   # Use Prisma Studio or a custom script to export data
+   ```
 
-**Quick recommendations:**
-- **Easiest:** [Railway](https://railway.app) - Deploy everything in one place
-- **Free tier:** [Render](https://render.com) - Great for testing/demos
-- **Best performance:** Vercel (frontend) + Railway (backend)
-- **Global edge:** [Fly.io](https://fly.io) - Deploy close to users worldwide
+2. Update your `.env` file:
+   ```env
+   DATABASE_URL="file:./dev.db"
+   ```
+
+3. Run migrations:
+   ```bash
+   cd server
+   npm run prisma:migrate -- --name init
+   ```
+
+4. Remove Docker dependencies:
+   ```bash
+   # No longer needed!
+   ```
 
 ## Future Enhancements
 - Owner dashboard for schedule editing and review management

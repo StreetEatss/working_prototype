@@ -1,15 +1,3 @@
-services:
-  postgres:
-    image: postgres:16
-    container_name: streeteats-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: streeteats
-      POSTGRES_PASSWORD: streeteats
-      POSTGRES_DB: streeteats
-    ports:
-      - "5434:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-volumes:
-  postgres-data:
+# Docker Compose is no longer required for this project
+# The project now uses SQLite, which doesn't require a separate database server
+# This file is kept for reference but can be removed if desired
