@@ -1,8 +1,5 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:4000",
-});
+// Client-side API using SQLite in the browser
+import * as db from "./db";
 
 const OWNER_TOKEN_KEY = "streeteats_owner_token";
 const canUseStorage = typeof window !== "undefined" && typeof window.localStorage !== "undefined";
@@ -18,135 +15,65 @@ export const setStoredOwnerToken = (token: string | null) => {
   if (!canUseStorage) return;
   if (token) {
     window.localStorage.setItem(OWNER_TOKEN_KEY, token);
-    api.defaults.headers.common.Authorization = `Bearer ${token}`;
   } else {
     window.localStorage.removeItem(OWNER_TOKEN_KEY);
-    delete api.defaults.headers.common.Authorization;
   }
 };
 
-const initialToken = bootstrapToken();
-if (initialToken) {
-  api.defaults.headers.common.Authorization = `Bearer ${initialToken}`;
-}
+// Re-export types from db
+export type StatusUpdate = db.StatusUpdate;
+export type MenuReview = db.MenuReview;
+export type MenuItem = db.MenuItem;
+export type FoodTruck = db.FoodTruck;
+export type OwnerTruckSummary = db.OwnerTruckSummary;
+export type OwnerProfile = db.OwnerProfile;
+export type ScheduleEntry = db.ScheduleEntry;
 
-export interface StatusUpdate {
-  id: string;
-  status: "OPEN" | "CLOSED" | "MOVED" | "UNKNOWN";
-  note?: string | null;
-  reporterName?: string | null;
-  reliability?: number | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  createdAt: string;
-  source?: string;
-}
-
-export interface MenuReview {
-  id: string;
-  rating: number;
-  tasteRating?: number | null;
-  valueRating?: number | null;
-  comment?: string | null;
-  reporterName?: string | null;
-  createdAt: string;
-}
-
-export interface MenuItem {
-  id: string;
-  name: string;
-  description?: string | null;
-  priceCents?: number | null;
-  imageUrl?: string | null;
-  averageRating?: number | null;
-  isFeatured: boolean;
-  reviews?: MenuReview[];
-}
-
-export type DayName = "Monday" | "Tuesday" | "Wednesday" | "Thursday" | "Friday" | "Saturday" | "Sunday";
-
-export interface ScheduleEntry {
-  day: DayName;
-  open: string;
-  close: string;
-  note?: string | null;
-}
-
-export interface FoodTruck {
-  id: string;
-  name: string;
-  description?: string | null;
-  cuisineType?: string | null;
-  imageUrl?: string | null;
-  defaultLocation?: string | null;
-  defaultLatitude?: number | null;
-  defaultLongitude?: number | null;
-  venmoHandle?: string | null;
-  latestStatus?: StatusUpdate | null;
-  statusUpdates?: StatusUpdate[];
-  menuItems: MenuItem[];
-  typicalSchedule?: ScheduleEntry[] | null;
-}
-
-export interface OwnerTruckSummary {
-  id: string;
-  name: string;
-  defaultLocation?: string | null;
-  cuisineType?: string | null;
-  role: "OWNER" | "MANAGER";
-  typicalSchedule: ScheduleEntry[];
-  defaultLatitude?: number | null;
-  defaultLongitude?: number | null;
-}
-
-export interface OwnerProfile {
-  id: string;
-  name: string;
-  email: string;
-  trucks: OwnerTruckSummary[];
-}
-
-export const fetchTrucks = async () => {
-  const { data } = await api.get<FoodTruck[]>("/api/trucks");
-  return data;
+export const fetchTrucks = async (): Promise<FoodTruck[]> => {
+  return await db.fetchTrucks();
 };
 
-export const fetchTruck = async (truckId: string) => {
-  const { data } = await api.get<FoodTruck>(`/api/trucks/${truckId}`);
-  return data;
+export const fetchTruck = async (truckId: string): Promise<FoodTruck> => {
+  const trucks = await db.fetchTrucks();
+  const truck = trucks.find((t) => t.id === truckId);
+  if (!truck) {
+    throw new Error("Truck not found");
+  }
+  return truck;
 };
 
 export const postStatusUpdate = async (
   truckId: string,
-  payload: Omit<StatusUpdate, "id" | "createdAt">
-) => {
-  const { data } = await api.post(`/api/trucks/${truckId}/status`, payload);
-  return data;
+  payload: Omit<StatusUpdate, "id" | "createdAt" | "source">
+): Promise<StatusUpdate> => {
+  return await db.postStatusUpdate(truckId, {
+    status: payload.status,
+    note: payload.note ?? undefined,
+    reporterName: payload.reporterName ?? undefined,
+    latitude: payload.latitude ?? undefined,
+    longitude: payload.longitude ?? undefined,
+  });
 };
 
 export const postMenuReview = async (
   truckId: string,
   payload: { menuItemId: string; rating: number; comment?: string; reporterName?: string }
-) => {
-  const { data } = await api.post(`/api/trucks/${truckId}/reviews`, payload);
-  return data;
+): Promise<MenuReview> => {
+  return await db.postMenuReview(truckId, payload);
 };
 
 export const loginOwner = async (payload: { email: string; password: string }) => {
-  const { data } = await api.post<{ token: string; owner: { id: string; email: string; name?: string } }>("/api/auth/login", payload);
-  return data;
+  return await db.loginOwner(payload);
 };
 
-export const fetchOwnerProfile = async () => {
-  const { data } = await api.get<OwnerProfile>("/api/owners/me");
-  return data;
+export const fetchOwnerProfile = async (): Promise<OwnerProfile> => {
+  const token = getStoredOwnerToken();
+  if (!token) {
+    throw new Error("Not authenticated");
+  }
+  return await db.fetchOwnerProfile(token);
 };
 
 export const updateTruckHours = async (truckId: string, schedule: ScheduleEntry[]) => {
-  const { data } = await api.patch<{ truckId: string; typicalSchedule: ScheduleEntry[] }>(`/api/trucks/${truckId}/hours`, {
-    schedule,
-  });
-  return data;
+  return await db.updateTruckHours(truckId, schedule);
 };
-
-export default api;
