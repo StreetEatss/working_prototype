@@ -280,9 +280,6 @@ export default function HomePage() {
           <button className="cta-button" onClick={() => refetch()}>
             Refresh
           </button>
-          <Link to="/owners" className="owner-link-button">
-            Owner login
-          </Link>
         </div>
       </header>
 
@@ -575,6 +572,12 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      <footer style={{ padding: "2rem 1.25rem", textAlign: "center", borderTop: "1px solid rgba(255, 255, 255, 0.1)", marginTop: "2rem" }}>
+        <Link to="/owners" className="owner-link-button" style={{ display: "inline-block" }}>
+          Owner login
+        </Link>
+      </footer>
 
       {/* Login Modal */}
       {showLoginModal && (
