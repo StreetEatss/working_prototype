@@ -28,7 +28,7 @@ let dbInitialized = false;
 
 const DB_STORAGE_KEY = "streeteats_db";
 const DB_VERSION_KEY = "streeteats_db_version";
-const CURRENT_VERSION = 1;
+const CURRENT_VERSION = 2; // Incremented to trigger database refresh with new food trucks
 
 async function initDatabase(): Promise<Database> {
   if (db && dbInitialized) {
@@ -45,16 +45,36 @@ async function initDatabase(): Promise<Database> {
     },
   });
 
-  // Try to load from IndexedDB
+  // Check database version - if outdated, clear and recreate
+  const storedVersion = localStorage.getItem(DB_VERSION_KEY);
+  if (storedVersion && parseInt(storedVersion) < CURRENT_VERSION) {
+    console.log(`Database version ${storedVersion} is outdated. Updating to version ${CURRENT_VERSION}...`);
+    localStorage.removeItem(DB_STORAGE_KEY);
+    localStorage.removeItem(DB_VERSION_KEY);
+  }
+
+  // Try to load from localStorage
   const stored = localStorage.getItem(DB_STORAGE_KEY);
   if (stored) {
     try {
       const uint8Array = new Uint8Array(JSON.parse(stored));
       db = new SQL.Database(uint8Array);
-      dbInitialized = true;
-      return db;
+      // Verify version matches
+      const currentStoredVersion = localStorage.getItem(DB_VERSION_KEY);
+      if (currentStoredVersion && parseInt(currentStoredVersion) === CURRENT_VERSION) {
+        dbInitialized = true;
+        return db;
+      } else {
+        // Version mismatch, recreate database
+        console.log("Database version mismatch, recreating...");
+        localStorage.removeItem(DB_STORAGE_KEY);
+        localStorage.removeItem(DB_VERSION_KEY);
+        db = null;
+      }
     } catch (e) {
       console.warn("Failed to load database from storage, creating new one", e);
+      localStorage.removeItem(DB_STORAGE_KEY);
+      localStorage.removeItem(DB_VERSION_KEY);
     }
   }
 
