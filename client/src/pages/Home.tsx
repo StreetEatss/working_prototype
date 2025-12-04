@@ -600,10 +600,11 @@ export default function HomePage() {
               borderRadius: "8px",
               maxWidth: "400px",
               width: "90%",
+              color: "#050914",
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>{isRegistering ? "Create Account" : "Login Required"}</h3>
+            <h3 style={{ color: "#050914", marginTop: 0 }}>{isRegistering ? "Create Account" : "Login Required"}</h3>
             <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#666" }}>
               {isRegistering
                 ? "Create a free account to post status updates and reviews. Email and phone number required."
@@ -612,7 +613,7 @@ export default function HomePage() {
             <form onSubmit={handleUserLogin}>
               {isRegistering ? (
                 <>
-                  <label className="form-label" htmlFor="register-username">
+                  <label className="form-label" htmlFor="register-username" style={{ color: "#050914" }}>
                     Username
                   </label>
                   <input
@@ -622,9 +623,9 @@ export default function HomePage() {
                     onChange={(e) => setRegisterUsername(e.target.value)}
                     placeholder="Choose a username"
                     required
-                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd", borderRadius: "4px" }}
                   />
-                  <label className="form-label" htmlFor="register-email">
+                  <label className="form-label" htmlFor="register-email" style={{ color: "#050914" }}>
                     Email
                   </label>
                   <input
@@ -634,9 +635,9 @@ export default function HomePage() {
                     onChange={(e) => setRegisterEmail(e.target.value)}
                     placeholder="your@email.com"
                     required
-                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd", borderRadius: "4px" }}
                   />
-                  <label className="form-label" htmlFor="register-phone">
+                  <label className="form-label" htmlFor="register-phone" style={{ color: "#050914" }}>
                     Phone Number
                   </label>
                   <input
@@ -646,9 +647,9 @@ export default function HomePage() {
                     onChange={(e) => setRegisterPhoneNumber(e.target.value)}
                     placeholder="(555) 123-4567"
                     required
-                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd", borderRadius: "4px" }}
                   />
-                  <label className="form-label" htmlFor="register-password">
+                  <label className="form-label" htmlFor="register-password" style={{ color: "#050914" }}>
                     Password
                   </label>
                   <input
@@ -658,12 +659,12 @@ export default function HomePage() {
                     onChange={(e) => setRegisterPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd", borderRadius: "4px" }}
                   />
                 </>
               ) : (
                 <>
-                  <label className="form-label" htmlFor="login-email-phone">
+                  <label className="form-label" htmlFor="login-email-phone" style={{ color: "#050914" }}>
                     Email or Phone Number
                   </label>
                   <input
@@ -673,9 +674,9 @@ export default function HomePage() {
                     onChange={(e) => setLoginEmailOrPhone(e.target.value)}
                     placeholder="your@email.com or (555) 123-4567"
                     required
-                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd", borderRadius: "4px" }}
                   />
-                  <label className="form-label" htmlFor="login-password">
+                  <label className="form-label" htmlFor="login-password" style={{ color: "#050914" }}>
                     Password
                   </label>
                   <input
@@ -685,12 +686,12 @@ export default function HomePage() {
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••••"
                     required
-                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd", borderRadius: "4px" }}
                   />
                 </>
               )}
-              {loginError && <p className="error-inline" style={{ marginBottom: "0.5rem" }}>{loginError}</p>}
-              <button type="submit" className="submit-button" disabled={loggingIn} style={{ width: "100%", marginBottom: "0.5rem" }}>
+              {loginError && <p className="error-inline" style={{ marginBottom: "0.5rem", color: "#d32f2f" }}>{loginError}</p>}
+              <button type="submit" className="submit-button" disabled={loggingIn} style={{ width: "100%", marginBottom: "0.5rem", background: "#050914", color: "#f4f5f9" }}>
                 {loggingIn ? "..." : isRegistering ? "Create Account" : "Login"}
               </button>
               <button
@@ -710,7 +711,7 @@ export default function HomePage() {
                     setRegisterPassword("");
                   }
                 }}
-                style={{ width: "100%", marginBottom: "0.5rem" }}
+                style={{ width: "100%", marginBottom: "0.5rem", color: "#050914", border: "1px solid #ddd" }}
               >
                 {isRegistering ? "Already have an account? Login instead" : "Don't have an account? Create one"}
               </button>
@@ -718,7 +719,7 @@ export default function HomePage() {
                 type="button"
                 className="cta-button ghost"
                 onClick={() => setShowLoginModal(false)}
-                style={{ width: "100%" }}
+                style={{ width: "100%", color: "#050914", border: "1px solid #ddd" }}
               >
                 Cancel
               </button>
