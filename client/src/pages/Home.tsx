@@ -570,8 +570,28 @@ export default function HomePage() {
         )}
       </section>
 
-      <footer style={{ padding: "2rem 1.25rem", textAlign: "center", borderTop: "1px solid rgba(255, 255, 255, 0.1)", marginTop: "2rem" }}>
-        <Link to="/owners" className="owner-link-button" style={{ display: "inline-block" }}>
+      <footer style={{ padding: "1rem 1.25rem", textAlign: "center", marginTop: "2rem" }}>
+        <Link 
+          to="/owners" 
+          style={{ 
+            display: "inline-block",
+            fontSize: "0.85rem",
+            color: "rgba(255, 255, 255, 0.7)",
+            textDecoration: "none",
+            padding: "0.4rem 0.8rem",
+            border: "1px solid rgba(255, 255, 255, 0.3)",
+            borderRadius: "999px",
+            transition: "all 0.2s ease"
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "#f4f5f9";
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.5)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "rgba(255, 255, 255, 0.7)";
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.3)";
+          }}
+        >
           Owner login
         </Link>
       </footer>
