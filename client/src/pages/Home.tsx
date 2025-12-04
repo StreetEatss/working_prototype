@@ -246,10 +246,10 @@ export default function HomePage() {
         </div>
         <div className="header-actions">
           {userToken && userProfile ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-              <span>Logged in as {userProfile.username}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.9rem" }}>Logged in as {userProfile.username}</span>
               {userProfile.strikeCount > 0 && (
-                <span style={{ color: userProfile.strikeCount >= 3 ? "#d32f2f" : "#ff9800" }}>
+                <span style={{ color: userProfile.strikeCount >= 3 ? "#d32f2f" : "#ff9800", fontSize: "0.9rem" }}>
                   Strikes: {userProfile.strikeCount}/3
                 </span>
               )}
@@ -258,7 +258,7 @@ export default function HomePage() {
               </button>
             </div>
           ) : (
-            <>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
               <button
                 className="cta-button"
                 onClick={() => {
@@ -275,11 +275,8 @@ export default function HomePage() {
               }}>
                 Login
               </button>
-            </>
+            </div>
           )}
-          <button className="cta-button" onClick={() => refetch()}>
-            Refresh
-          </button>
         </div>
       </header>
 

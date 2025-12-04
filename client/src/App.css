@@ -9,10 +9,11 @@
 .app-header {
   padding: 0 1.25rem 0.75rem;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   color: #f4f5f9;
+  flex-wrap: wrap;
 }
 
 .app-header h1 {
@@ -24,6 +25,8 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .owner-link-button {
