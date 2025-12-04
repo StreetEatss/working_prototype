@@ -28,7 +28,7 @@ let dbInitialized = false;
 
 const DB_STORAGE_KEY = "streeteats_db";
 const DB_VERSION_KEY = "streeteats_db_version";
-const CURRENT_VERSION = 2;
+const CURRENT_VERSION = 1;
 
 async function initDatabase(): Promise<Database> {
   if (db && dbInitialized) {
@@ -44,13 +44,6 @@ async function initDatabase(): Promise<Database> {
       return `https://sql.js.org/dist/${file}`;
     },
   });
-
-  // Check version and clear old database if needed
-  const storedVersion = localStorage.getItem(DB_VERSION_KEY);
-  if (storedVersion && parseInt(storedVersion) < CURRENT_VERSION) {
-    localStorage.removeItem(DB_STORAGE_KEY);
-    localStorage.removeItem(DB_VERSION_KEY);
-  }
 
   // Try to load from IndexedDB
   const stored = localStorage.getItem(DB_STORAGE_KEY);
@@ -191,117 +184,117 @@ async function seedDatabase(db: Database) {
   const trucks = [
     {
       name: "Tacos Don Memo",
-      description: "Authentic Mexican tacos, burritos, and birria specialties",
+      description: "Authentic Mexican tacos, burritos, and more. West side of 38th between Spruce & Locust, under Locust Walk bridge.",
       cuisineType: "Mexican",
       imageUrl: "https://images.unsplash.com/photo-1608039829574-358155f866f5?auto=format&fit=crop&w=1200&q=80",
       defaultLocation: "270 S 38th St, Philadelphia, PA 19104 (west side of 38th between Spruce & Locust, under Locust Walk bridge)",
       defaultLatitude: 39.9534,
       defaultLongitude: -75.1981,
-      venmoHandle: "@donnemotacos",
+      venmoHandle: null,
       menuItems: [
-        { name: "Taco (asada / pollo / pastor / carnitas, single)", priceCents: 500, description: "Choice of meat" },
-        { name: "Burrito (choice of meat or veggie)", priceCents: 1350, description: "Loaded with rice, beans, and your choice of protein" },
+        { name: "Taco (asada / pollo / pastor / carnitas, single)", priceCents: 500 },
+        { name: "Burrito (choice of meat or veggie)", priceCents: 1350 },
         { name: "Quesadilla", priceCents: 1350 },
         { name: "Torta (Mexican sandwich)", priceCents: 1350 },
-        { name: "Birria Tacos (3)", priceCents: 1800, description: "Three birria tacos", isFeatured: true },
+        { name: "Birria Tacos (3)", priceCents: 1800, isFeatured: true },
         { name: "Guacamole & Chips", priceCents: 1200 },
       ],
     },
     {
       name: "Tyson Bees",
-      description: "Korean-Thai fusion with BBQ short ribs and kimchi",
-      cuisineType: "Korean-Thai Fusion",
+      description: "Korean BBQ and Thai fusion. Korean BBQ beef short rib tacos, Thai basil chicken, and more.",
+      cuisineType: "Korean",
       imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
       defaultLocation: "33rd St & Spruce St, Philadelphia, PA 19104 (near Franklin Field / Penn Museum side)",
-      defaultLatitude: 39.9520,
-      defaultLongitude: -75.1930,
-      venmoHandle: "@tysonbees",
+      defaultLatitude: 39.9524,
+      defaultLongitude: -75.1931,
+      venmoHandle: null,
       menuItems: [
-        { name: "Korean BBQ Beef Short Rib Tacos (per taco)", priceCents: 425, description: "Tender short rib with kimchi" },
+        { name: "Korean BBQ Beef Short Rib Tacos (per taco)", priceCents: 425 },
         { name: "Thai Basil Chicken Tacos (per taco)", priceCents: 425 },
-        { name: "Korean BBQ Beef Short Rib & Kimchi Burrito", priceCents: 1000, description: "Signature fusion burrito", isFeatured: true },
+        { name: "Korean BBQ Beef Short Rib & Kimchi Burrito", priceCents: 1000 },
         { name: "BBQ Lemongrass Pork over Rice", priceCents: 950 },
         { name: "Thai Basil Chicken over Rice", priceCents: 950 },
-        { name: "O.G. Dog (beef hot dog w/ short rib & kimchi)", priceCents: 700 },
+        { name: "O.G. Dog (beef hot dog w/ short rib & kimchi)", priceCents: 700, isFeatured: true },
         { name: "Kimchi Dog / Beef Dog", priceCents: 700 },
       ],
     },
     {
       name: "Hemo's",
-      description: "Breakfast sandwiches, shawarma, and cheesesteaks",
-      cuisineType: "Middle Eastern / American",
-      imageUrl: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "37th & Spruce St, south side of Spruce just below the 37th St entrance to the Quad",
+      description: "Breakfast sandwiches, shawarma, and cheesesteaks. South side of Spruce just below the 37th St entrance to the Quad.",
+      cuisineType: "Middle Eastern",
+      imageUrl: "https://images.unsplash.com/photo-1504753793650-d4a2b783c15c?auto=format&fit=crop&w=1200&q=80",
+      defaultLocation: "37th & Spruce St, Philadelphia, PA 19104 (south side of Spruce just below the 37th St entrance to the Quad)",
       defaultLatitude: 39.9524,
       defaultLongitude: -75.1931,
-      venmoHandle: "@hemosspot",
+      venmoHandle: null,
       menuItems: [
         { name: "Egg & Cheese Sandwich (roll)", priceCents: 450 },
         { name: "Chicken Sausage, Egg & Cheese Sandwich", priceCents: 575 },
-        { name: "Grilled Chicken \"Hemo's Shawarma\" Sandwich", priceCents: 900, description: "Signature shawarma", isFeatured: true },
+        { name: "Grilled Chicken \"Hemo's Shawarma\" Sandwich", priceCents: 900, isFeatured: true },
         { name: "Shawarma Combo (sandwich + fries / drink)", priceCents: 1300 },
         { name: "Cheesesteak (standard)", priceCents: 950 },
       ],
     },
     {
       name: "Lyn's",
-      description: "Breakfast classics and campus-favorite cheesesteaks",
+      description: "Breakfast classics and campus-favorite cheesesteaks. South side of Spruce at 36th St, near CHOP / Lower Quad.",
       cuisineType: "Breakfast",
       imageUrl: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=1200&q=80",
       defaultLocation: "3600 Spruce St, Philadelphia, PA 19104 (south side of Spruce at 36th St, near CHOP / Lower Quad)",
       defaultLatitude: 39.9516,
       defaultLongitude: -75.1949,
-      venmoHandle: "@lynnsfoodtruck",
+      venmoHandle: null,
       menuItems: [
-        { name: "Bacon, Egg & Cheese (long roll)", priceCents: 600, description: "Griddled bacon, fluffy eggs, melted cheese" },
+        { name: "Bacon, Egg & Cheese (long roll)", priceCents: 600 },
         { name: "Sausage, Egg & Cheese (long roll or potato bread)", priceCents: 600 },
-        { name: "Mixed Veggie, Egg & Cheese w/ avocado (+$0.50)", priceCents: 700, description: "Vegetarian option with avocado" },
-        { name: "Cheesesteak Special", priceCents: 950, description: "Sliced ribeye, onions, melted provolone", isFeatured: true },
+        { name: "Mixed Veggie, Egg & Cheese w/ avocado (+$0.50)", priceCents: 700 },
+        { name: "Cheesesteak Special", priceCents: 950, isFeatured: true },
       ],
     },
     {
       name: "Sopoong",
-      description: "Authentic Korean kimbap and lunch plates",
+      description: "Korean lunch plates including kimbap, bulgogi, and spicy pork. Near 298 S University Ave / 38th & Spruce area (by the Wawa).",
       cuisineType: "Korean",
       imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
       defaultLocation: "Near 298 S University Ave / 38th & Spruce area (by the Wawa)",
-      defaultLatitude: 39.9530,
-      defaultLongitude: -75.1975,
-      venmoHandle: "@sopoong",
+      defaultLatitude: 39.9520,
+      defaultLongitude: -75.1970,
+      venmoHandle: null,
       menuItems: [
-        { name: "Kimbap (Korean rolls, various fillings)", priceCents: 900, description: "Traditional Korean rice rolls", isFeatured: true },
+        { name: "Kimbap (Korean rolls, various fillings)", priceCents: 900 },
         { name: "Bulgogi over Rice", priceCents: 900 },
-        { name: "Spicy Pork over Rice", priceCents: 900 },
-        { name: "Other Korean lunch plates (chicken, tofu)", priceCents: 900 },
+        { name: "Spicy Pork over Rice", priceCents: 900, isFeatured: true },
+        { name: "Other Korean lunch plates (e.g., chicken, tofu)", priceCents: 900 },
       ],
     },
     {
       name: "Kami",
-      description: "Korean bibimbap and noodle bowls near Drexel",
+      description: "Korean bibimbap and noodles. In front of Drexel's Hagerty Library (short walk from Penn).",
       cuisineType: "Korean",
       imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "33rd & Market St, in front of Drexel's Hagerty Library (short walk from Penn)",
-      defaultLatitude: 39.9560,
-      defaultLongitude: -75.1915,
-      venmoHandle: "@kami",
+      defaultLocation: "33rd & Market St, Philadelphia, PA 19104 (in front of Drexel's Hagerty Library)",
+      defaultLatitude: 39.9555,
+      defaultLongitude: -75.1910,
+      venmoHandle: null,
       menuItems: [
-        { name: "Bibimbap (various meats or veggie)", priceCents: 950, description: "Mixed rice bowl with vegetables and protein", isFeatured: true },
+        { name: "Bibimbap (various meats or veggie)", priceCents: 950 },
         { name: "Bulgogi Beef w/ Udon Noodles", priceCents: 950 },
-        { name: "Spicy Pork Bibimbap", priceCents: 950 },
+        { name: "Spicy Pork Bibimbap", priceCents: 950, isFeatured: true },
         { name: "Vegetable Bibimbap (meat-free)", priceCents: 850 },
       ],
     },
     {
       name: "Caribbean Feast",
-      description: "Jamaican jerk chicken and Caribbean specialties",
-      cuisineType: "Caribbean / Jamaican",
-      imageUrl: "https://images.unsplash.com/photo-1529042410759-befb1204b468?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "West side of 38th St between Spruce & Locust (same block as Don Memo, Jamaican/Caribbean truck)",
+      description: "Jamaican and Caribbean cuisine. West side of 38th St between Spruce & Locust (same block as Don Memo).",
+      cuisineType: "Caribbean",
+      imageUrl: "https://images.unsplash.com/photo-1528832992873-5bb578167d94?auto=format&fit=crop&w=1200&q=80",
+      defaultLocation: "West side of 38th St between Spruce & Locust (same block as Don Memo)",
       defaultLatitude: 39.9532,
       defaultLongitude: -75.1980,
-      venmoHandle: "@caribbeanfeast",
+      venmoHandle: null,
       menuItems: [
-        { name: "Jerk Chicken Plate (with rice & peas + sides)", priceCents: 1300, description: "Spicy jerk chicken with traditional sides", isFeatured: true },
+        { name: "Jerk Chicken Plate (with rice & peas + sides)", priceCents: 1300, isFeatured: true },
         { name: "Curry Chicken Plate", priceCents: 1300 },
         { name: "Jerk Chicken Sandwich / Wrap", priceCents: 1000 },
         { name: "Beef or Chicken Patty", priceCents: 425 },

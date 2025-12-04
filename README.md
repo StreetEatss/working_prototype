@@ -52,7 +52,7 @@ For testing the owner portal, use these credentials:
 - **Email:** `owner@streeteats.test`
 - **Password:** `owner1234`
 
-This account has access to manage hours for Lynn's and Taco's Don Memo food trucks.
+This account has access to manage hours for Lyn's and Tacos Don Memo food trucks.
 
 ## Project Structure
 
