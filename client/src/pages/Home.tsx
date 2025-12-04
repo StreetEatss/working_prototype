@@ -360,6 +360,14 @@ export default function HomePage() {
 
               <div>
                 <h4>Quick Status Check</h4>
+                {!userToken && (
+                  <div style={{ padding: "1rem", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "4px", marginBottom: "1rem" }}>
+                    <p style={{ margin: 0, fontWeight: "bold" }}>🔒 Login Required</p>
+                    <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
+                      You must <button type="button" className="cta-button" onClick={() => setShowLoginModal(true)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.9rem", marginLeft: "0.5rem" }}>create an account or log in</button> to post status updates.
+                    </p>
+                  </div>
+                )}
                 <form className="inline-form" onSubmit={handleStatusSubmit}>
                   <label className="form-label">Current status</label>
                   <div className="status-options">
@@ -368,7 +376,14 @@ export default function HomePage() {
                         type="button"
                         key={option.value}
                         className={`pill ${statusValue === option.value ? "pill-active" : ""}`}
-                        onClick={() => setStatusValue(option.value)}
+                        onClick={() => {
+                          if (!userToken) {
+                            setShowLoginModal(true);
+                            return;
+                          }
+                          setStatusValue(option.value);
+                        }}
+                        disabled={!userToken}
                       >
                         {option.label}
                       </button>
@@ -377,26 +392,73 @@ export default function HomePage() {
                   <label className="form-label">Notes (optional)</label>
                   <textarea
                     value={statusNote}
-                    onChange={(event) => setStatusNote(event.target.value)}
-                    placeholder="Line getting long? Truck moved across Spruce?"
+                    onChange={(event) => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                        return;
+                      }
+                      setStatusNote(event.target.value);
+                    }}
+                    onFocus={() => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                      }
+                    }}
+                    placeholder={userToken ? "Line getting long? Truck moved across Spruce?" : "Login to post updates"}
+                    disabled={!userToken}
                   />
                   <label className="form-label">Name or handle</label>
                   <input
                     value={statusReporter}
-                    onChange={(event) => setStatusReporter(event.target.value)}
-                    placeholder="ex: @pennfoodie"
+                    onChange={(event) => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                        return;
+                      }
+                      setStatusReporter(event.target.value);
+                    }}
+                    onFocus={() => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                      }
+                    }}
+                    placeholder={userToken ? "ex: @pennfoodie" : "Login to post updates"}
+                    disabled={!userToken}
                   />
-                  <button type="submit" className="submit-button" disabled={submittingStatus}>
-                    {submittingStatus ? "Sending..." : "Share update"}
+                  <button type="submit" className="submit-button" disabled={submittingStatus || !userToken}>
+                    {submittingStatus ? "Sending..." : userToken ? "Share update" : "Login to post"}
                   </button>
                 </form>
               </div>
 
               <div>
                 <h4>Menu Review</h4>
+                {!userToken && (
+                  <div style={{ padding: "1rem", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "4px", marginBottom: "1rem" }}>
+                    <p style={{ margin: 0, fontWeight: "bold" }}>🔒 Login Required</p>
+                    <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
+                      You must <button type="button" className="cta-button" onClick={() => setShowLoginModal(true)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.9rem", marginLeft: "0.5rem" }}>create an account or log in</button> to post reviews.
+                    </p>
+                  </div>
+                )}
                 <form className="inline-form" onSubmit={handleReviewSubmit}>
                   <label className="form-label">Dish</label>
-                  <select value={reviewMenuItemId} onChange={(event) => setReviewMenuItemId(event.target.value)}>
+                  <select
+                    value={reviewMenuItemId}
+                    onChange={(event) => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                        return;
+                      }
+                      setReviewMenuItemId(event.target.value);
+                    }}
+                    onFocus={() => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                      }
+                    }}
+                    disabled={!userToken}
+                  >
                     {selectedTruck.menuItems.map((item) => (
                       <option key={item.id} value={item.id}>
                         {item.name}
@@ -409,23 +471,59 @@ export default function HomePage() {
                     min={1}
                     max={5}
                     value={reviewRating}
-                    onChange={(event) => setReviewRating(Number(event.target.value))}
+                    onChange={(event) => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                        return;
+                      }
+                      setReviewRating(Number(event.target.value));
+                    }}
+                    onFocus={() => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                      }
+                    }}
+                    disabled={!userToken}
                   />
                   <div className="range-value">{reviewRating} / 5</div>
                   <label className="form-label">Comment</label>
                   <textarea
                     value={reviewComment}
-                    onChange={(event) => setReviewComment(event.target.value)}
-                    placeholder="Portions, spice level, crowd tips..."
+                    onChange={(event) => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                        return;
+                      }
+                      setReviewComment(event.target.value);
+                    }}
+                    onFocus={() => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                      }
+                    }}
+                    placeholder={userToken ? "Portions, spice level, crowd tips..." : "Login to post reviews"}
+                    disabled={!userToken}
                   />
                   <label className="form-label">Name or handle</label>
                   <input
                     value={reviewReporter}
-                    onChange={(event) => setReviewReporter(event.target.value)}
-                    placeholder="ex: Jess from Huntsman"
+                    onChange={(event) => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                        return;
+                      }
+                      setReviewReporter(event.target.value);
+                    }}
+                    onFocus={() => {
+                      if (!userToken) {
+                        setShowLoginModal(true);
+                      }
+                    }}
+                    placeholder={userToken ? "ex: Jess from Huntsman" : "Login to post reviews"}
+                    disabled={!userToken}
                   />
-                  <button type="submit" className="submit-button" disabled={submittingReview}>
-                    {submittingReview ? "Posting..." : "Post review"}
+                  <button type="submit" className="submit-button" disabled={submittingReview || !userToken}>
+                    {submittingReview ? "Posting..." : userToken ? "Post review" : "Login to post"}
                   </button>
                 </form>
               </div>
@@ -464,8 +562,8 @@ export default function HomePage() {
             <h3>{isRegistering ? "Create Account" : "Login"}</h3>
             <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#666" }}>
               {isRegistering
-                ? "Create an account to post status updates and reviews"
-                : "Login to post status updates and reviews"}
+                ? "Create a free account to post status updates and reviews. No email required!"
+                : "Login to post status updates and reviews. Don't have an account? Click 'Sign up' below."}
             </p>
             <form onSubmit={handleUserLogin}>
               <label className="form-label" htmlFor="user-username">
@@ -505,7 +603,7 @@ export default function HomePage() {
                     setLoginError(null);
                   }}
                 >
-                  {isRegistering ? "Login instead" : "Sign up"}
+                  {isRegistering ? "Already have an account? Login" : "Create Account"}
                 </button>
               </div>
               <button

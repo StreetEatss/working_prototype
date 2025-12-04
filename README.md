@@ -46,6 +46,15 @@ The app uses **sql.js** (SQLite compiled to WebAssembly) to run a full SQLite da
 - Stored in browser localStorage for persistence
 - Completely client-side - no server needed
 
+## User Accounts
+
+**Regular Users:** There are no default user accounts. Users must create their own account by:
+1. Clicking the "Login" button in the top right
+2. Clicking "Create Account" in the login modal
+3. Entering a username and password
+
+Users can view all information without logging in, but must be logged in to post status updates or reviews.
+
 ## Owner Accounts
 
 Each food truck has its own owner account. Use these credentials to log in:
