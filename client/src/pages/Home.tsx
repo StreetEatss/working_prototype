@@ -236,9 +236,24 @@ export default function HomePage() {
               </button>
             </div>
           ) : (
-            <button className="cta-button" onClick={() => setShowLoginModal(true)}>
-              Login
-            </button>
+            <>
+              <button
+                className="cta-button"
+                onClick={() => {
+                  setIsRegistering(true);
+                  setShowLoginModal(true);
+                }}
+                style={{ background: "#4caf50", color: "white" }}
+              >
+                Sign Up
+              </button>
+              <button className="cta-button ghost" onClick={() => {
+                setIsRegistering(false);
+                setShowLoginModal(true);
+              }}>
+                Login
+              </button>
+            </>
           )}
           <button className="cta-button" onClick={() => refetch()}>
             Refresh
@@ -562,8 +577,8 @@ export default function HomePage() {
             <h3>{isRegistering ? "Create Account" : "Login"}</h3>
             <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#666" }}>
               {isRegistering
-                ? "Create a free account to post status updates and reviews. No email required!"
-                : "Login to post status updates and reviews. Don't have an account? Click 'Sign up' below."}
+                ? "Create a free account to post status updates and reviews. No email required - just choose a username and password!"
+                : "Login to post status updates and reviews. Don't have an account? Click 'Sign Up' in the header or 'Create Account' below."}
             </p>
             <form onSubmit={handleUserLogin}>
               <label className="form-label" htmlFor="user-username">
@@ -574,7 +589,7 @@ export default function HomePage() {
                 type="text"
                 value={loginUsername}
                 onChange={(e) => setLoginUsername(e.target.value)}
-                placeholder="username"
+                placeholder="Choose a username"
                 required
                 style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
               />
@@ -591,21 +606,20 @@ export default function HomePage() {
                 style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
               />
               {loginError && <p className="error-inline" style={{ marginBottom: "0.5rem" }}>{loginError}</p>}
-              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
-                <button type="submit" className="submit-button" disabled={loggingIn} style={{ flex: 1 }}>
-                  {loggingIn ? "..." : isRegistering ? "Sign Up" : "Login"}
-                </button>
-                <button
-                  type="button"
-                  className="cta-button ghost"
-                  onClick={() => {
-                    setIsRegistering(!isRegistering);
-                    setLoginError(null);
-                  }}
-                >
-                  {isRegistering ? "Already have an account? Login" : "Create Account"}
-                </button>
-              </div>
+              <button type="submit" className="submit-button" disabled={loggingIn} style={{ width: "100%", marginBottom: "0.5rem" }}>
+                {loggingIn ? "..." : isRegistering ? "Create Account" : "Login"}
+              </button>
+              <button
+                type="button"
+                className="cta-button ghost"
+                onClick={() => {
+                  setIsRegistering(!isRegistering);
+                  setLoginError(null);
+                }}
+                style={{ width: "100%", marginBottom: "0.5rem" }}
+              >
+                {isRegistering ? "Already have an account? Login instead" : "Don't have an account? Create one"}
+              </button>
               <button
                 type="button"
                 className="cta-button ghost"
