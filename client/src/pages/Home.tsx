@@ -397,14 +397,6 @@ export default function HomePage() {
 
               <div>
                 <h4>Quick Status Check</h4>
-                {!userToken && (
-                  <div style={{ padding: "1rem", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "4px", marginBottom: "1rem" }}>
-                    <p style={{ margin: 0, fontWeight: "bold" }}>🔒 Login Required</p>
-                    <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
-                      You must <button type="button" className="cta-button" onClick={() => setShowLoginModal(true)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.9rem", marginLeft: "0.5rem" }}>create an account or log in</button> to post status updates.
-                    </p>
-                  </div>
-                )}
                 <form className="inline-form" onSubmit={handleStatusSubmit}>
                   <label className="form-label">Current status</label>
                   <div className="status-options">
@@ -420,7 +412,6 @@ export default function HomePage() {
                           }
                           setStatusValue(option.value);
                         }}
-                        disabled={!userToken}
                       >
                         {option.label}
                       </button>
@@ -441,8 +432,9 @@ export default function HomePage() {
                         setShowLoginModal(true);
                       }
                     }}
-                    placeholder={userToken ? "Line getting long? Truck moved across Spruce?" : "Login to post updates"}
-                    disabled={!userToken}
+                    placeholder={userToken ? "Line getting long? Truck moved across Spruce?" : "Click to login and post updates"}
+                    readOnly={!userToken}
+                    style={{ cursor: !userToken ? "pointer" : "text" }}
                   />
                   <label className="form-label">Name or handle</label>
                   <input
@@ -459,10 +451,21 @@ export default function HomePage() {
                         setShowLoginModal(true);
                       }
                     }}
-                    placeholder={userToken ? "ex: @pennfoodie" : "Login to post updates"}
-                    disabled={!userToken}
+                    placeholder={userToken ? "ex: @pennfoodie" : "Click to login and post updates"}
+                    readOnly={!userToken}
+                    style={{ cursor: !userToken ? "pointer" : "text" }}
                   />
-                  <button type="submit" className="submit-button" disabled={submittingStatus || !userToken}>
+                  <button
+                    type="submit"
+                    className="submit-button"
+                    disabled={submittingStatus}
+                    onClick={(e) => {
+                      if (!userToken) {
+                        e.preventDefault();
+                        setShowLoginModal(true);
+                      }
+                    }}
+                  >
                     {submittingStatus ? "Sending..." : userToken ? "Share update" : "Login to post"}
                   </button>
                 </form>
@@ -470,14 +473,6 @@ export default function HomePage() {
 
               <div>
                 <h4>Menu Review</h4>
-                {!userToken && (
-                  <div style={{ padding: "1rem", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "4px", marginBottom: "1rem" }}>
-                    <p style={{ margin: 0, fontWeight: "bold" }}>🔒 Login Required</p>
-                    <p style={{ margin: "0.5rem 0 0 0", fontSize: "0.9rem" }}>
-                      You must <button type="button" className="cta-button" onClick={() => setShowLoginModal(true)} style={{ padding: "0.25rem 0.5rem", fontSize: "0.9rem", marginLeft: "0.5rem" }}>create an account or log in</button> to post reviews.
-                    </p>
-                  </div>
-                )}
                 <form className="inline-form" onSubmit={handleReviewSubmit}>
                   <label className="form-label">Dish</label>
                   <select
@@ -494,7 +489,7 @@ export default function HomePage() {
                         setShowLoginModal(true);
                       }
                     }}
-                    disabled={!userToken}
+                    style={{ cursor: !userToken ? "pointer" : "default" }}
                   >
                     {selectedTruck.menuItems.map((item) => (
                       <option key={item.id} value={item.id}>
@@ -520,7 +515,7 @@ export default function HomePage() {
                         setShowLoginModal(true);
                       }
                     }}
-                    disabled={!userToken}
+                    style={{ cursor: !userToken ? "pointer" : "default" }}
                   />
                   <div className="range-value">{reviewRating} / 5</div>
                   <label className="form-label">Comment</label>
@@ -538,8 +533,9 @@ export default function HomePage() {
                         setShowLoginModal(true);
                       }
                     }}
-                    placeholder={userToken ? "Portions, spice level, crowd tips..." : "Login to post reviews"}
-                    disabled={!userToken}
+                    placeholder={userToken ? "Portions, spice level, crowd tips..." : "Click to login and post reviews"}
+                    readOnly={!userToken}
+                    style={{ cursor: !userToken ? "pointer" : "text" }}
                   />
                   <label className="form-label">Name or handle</label>
                   <input
@@ -556,10 +552,21 @@ export default function HomePage() {
                         setShowLoginModal(true);
                       }
                     }}
-                    placeholder={userToken ? "ex: Jess from Huntsman" : "Login to post reviews"}
-                    disabled={!userToken}
+                    placeholder={userToken ? "ex: Jess from Huntsman" : "Click to login and post reviews"}
+                    readOnly={!userToken}
+                    style={{ cursor: !userToken ? "pointer" : "text" }}
                   />
-                  <button type="submit" className="submit-button" disabled={submittingReview || !userToken}>
+                  <button
+                    type="submit"
+                    className="submit-button"
+                    disabled={submittingReview}
+                    onClick={(e) => {
+                      if (!userToken) {
+                        e.preventDefault();
+                        setShowLoginModal(true);
+                      }
+                    }}
+                  >
                     {submittingReview ? "Posting..." : userToken ? "Post review" : "Login to post"}
                   </button>
                 </form>
@@ -596,11 +603,11 @@ export default function HomePage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h3>{isRegistering ? "Create Account" : "Login"}</h3>
+            <h3>{isRegistering ? "Create Account" : "Login Required"}</h3>
             <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#666" }}>
               {isRegistering
                 ? "Create a free account to post status updates and reviews. Email and phone number required."
-                : "Login with your email or phone number. Don't have an account? Click 'Sign Up' in the header or 'Create Account' below."}
+                : "You must create an account or log in to post status updates and reviews."}
             </p>
             <form onSubmit={handleUserLogin}>
               {isRegistering ? (
