@@ -143,11 +143,11 @@ export const deleteMenuItem = async (menuItemId: string): Promise<void> => {
 };
 
 // User functions
-export const registerUser = async (payload: { username: string; password: string }) => {
+export const registerUser = async (payload: { username: string; email: string; phoneNumber: string; password: string }) => {
   return await db.registerUser(payload);
 };
 
-export const loginUser = async (payload: { username: string; password: string }) => {
+export const loginUser = async (payload: { emailOrPhone: string; password: string }) => {
   return await db.loginUser(payload);
 };
 

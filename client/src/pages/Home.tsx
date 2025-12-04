@@ -90,8 +90,12 @@ export default function HomePage() {
   const [userToken, setUserToken] = useState<string | null>(() => getStoredUserToken());
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isRegistering, setIsRegistering] = useState(false);
-  const [loginUsername, setLoginUsername] = useState("");
+  const [loginEmailOrPhone, setLoginEmailOrPhone] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [registerUsername, setRegisterUsername] = useState("");
+  const [registerEmail, setRegisterEmail] = useState("");
+  const [registerPhoneNumber, setRegisterPhoneNumber] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
   
@@ -188,15 +192,33 @@ export default function HomePage() {
     setLoginError(null);
     setLoggingIn(true);
     try {
-      const response = isRegistering
-        ? await registerUser({ username: loginUsername, password: loginPassword })
-        : await loginUser({ username: loginUsername, password: loginPassword });
-      setStoredUserToken(response.token);
-      setUserToken(response.token);
-      setShowLoginModal(false);
-      setLoginUsername("");
-      setLoginPassword("");
-      setFeedback(`Welcome${isRegistering ? "! Account created." : " back!"}`);
+      if (isRegistering) {
+        const response = await registerUser({
+          username: registerUsername,
+          email: registerEmail,
+          phoneNumber: registerPhoneNumber,
+          password: registerPassword,
+        });
+        setStoredUserToken(response.token);
+        setUserToken(response.token);
+        setShowLoginModal(false);
+        setRegisterUsername("");
+        setRegisterEmail("");
+        setRegisterPhoneNumber("");
+        setRegisterPassword("");
+        setFeedback("Welcome! Account created.");
+      } else {
+        const response = await loginUser({
+          emailOrPhone: loginEmailOrPhone,
+          password: loginPassword,
+        });
+        setStoredUserToken(response.token);
+        setUserToken(response.token);
+        setShowLoginModal(false);
+        setLoginEmailOrPhone("");
+        setLoginPassword("");
+        setFeedback("Welcome back!");
+      }
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -577,34 +599,89 @@ export default function HomePage() {
             <h3>{isRegistering ? "Create Account" : "Login"}</h3>
             <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#666" }}>
               {isRegistering
-                ? "Create a free account to post status updates and reviews. No email required - just choose a username and password!"
-                : "Login to post status updates and reviews. Don't have an account? Click 'Sign Up' in the header or 'Create Account' below."}
+                ? "Create a free account to post status updates and reviews. Email and phone number required."
+                : "Login with your email or phone number. Don't have an account? Click 'Sign Up' in the header or 'Create Account' below."}
             </p>
             <form onSubmit={handleUserLogin}>
-              <label className="form-label" htmlFor="user-username">
-                Username
-              </label>
-              <input
-                id="user-username"
-                type="text"
-                value={loginUsername}
-                onChange={(e) => setLoginUsername(e.target.value)}
-                placeholder="Choose a username"
-                required
-                style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
-              />
-              <label className="form-label" htmlFor="user-password">
-                Password
-              </label>
-              <input
-                id="user-password"
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
-              />
+              {isRegistering ? (
+                <>
+                  <label className="form-label" htmlFor="register-username">
+                    Username
+                  </label>
+                  <input
+                    id="register-username"
+                    type="text"
+                    value={registerUsername}
+                    onChange={(e) => setRegisterUsername(e.target.value)}
+                    placeholder="Choose a username"
+                    required
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                  />
+                  <label className="form-label" htmlFor="register-email">
+                    Email
+                  </label>
+                  <input
+                    id="register-email"
+                    type="email"
+                    value={registerEmail}
+                    onChange={(e) => setRegisterEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    required
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                  />
+                  <label className="form-label" htmlFor="register-phone">
+                    Phone Number
+                  </label>
+                  <input
+                    id="register-phone"
+                    type="tel"
+                    value={registerPhoneNumber}
+                    onChange={(e) => setRegisterPhoneNumber(e.target.value)}
+                    placeholder="(555) 123-4567"
+                    required
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                  />
+                  <label className="form-label" htmlFor="register-password">
+                    Password
+                  </label>
+                  <input
+                    id="register-password"
+                    type="password"
+                    value={registerPassword}
+                    onChange={(e) => setRegisterPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                  />
+                </>
+              ) : (
+                <>
+                  <label className="form-label" htmlFor="login-email-phone">
+                    Email or Phone Number
+                  </label>
+                  <input
+                    id="login-email-phone"
+                    type="text"
+                    value={loginEmailOrPhone}
+                    onChange={(e) => setLoginEmailOrPhone(e.target.value)}
+                    placeholder="your@email.com or (555) 123-4567"
+                    required
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                  />
+                  <label className="form-label" htmlFor="login-password">
+                    Password
+                  </label>
+                  <input
+                    id="login-password"
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                  />
+                </>
+              )}
               {loginError && <p className="error-inline" style={{ marginBottom: "0.5rem" }}>{loginError}</p>}
               <button type="submit" className="submit-button" disabled={loggingIn} style={{ width: "100%", marginBottom: "0.5rem" }}>
                 {loggingIn ? "..." : isRegistering ? "Create Account" : "Login"}
@@ -615,6 +692,16 @@ export default function HomePage() {
                 onClick={() => {
                   setIsRegistering(!isRegistering);
                   setLoginError(null);
+                  // Clear form fields when switching
+                  if (isRegistering) {
+                    setLoginEmailOrPhone("");
+                    setLoginPassword("");
+                  } else {
+                    setRegisterUsername("");
+                    setRegisterEmail("");
+                    setRegisterPhoneNumber("");
+                    setRegisterPassword("");
+                  }
                 }}
                 style={{ width: "100%", marginBottom: "0.5rem" }}
               >

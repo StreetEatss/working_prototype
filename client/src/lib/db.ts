@@ -28,7 +28,7 @@ let dbInitialized = false;
 
 const DB_STORAGE_KEY = "streeteats_db";
 const DB_VERSION_KEY = "streeteats_db_version";
-const CURRENT_VERSION = 4; // Incremented to add user accounts and flagging system
+const CURRENT_VERSION = 5; // Incremented to add email and phone number to user accounts
 
 async function initDatabase(): Promise<Database> {
   if (db && dbInitialized) {
@@ -157,6 +157,8 @@ async function createTables(db: Database) {
     CREATE TABLE IF NOT EXISTS User (
       id TEXT PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phoneNumber TEXT UNIQUE NOT NULL,
       passwordHash TEXT NOT NULL,
       strikeCount INTEGER NOT NULL DEFAULT 0,
       isBanned INTEGER NOT NULL DEFAULT 0,
@@ -999,20 +1001,34 @@ export async function deleteMenuItem(menuItemId: string): Promise<void> {
 export interface User {
   id: string;
   username: string;
+  email: string;
+  phoneNumber: string;
   strikeCount: number;
   isBanned: boolean;
 }
 
-export async function registerUser(payload: { username: string; password: string }): Promise<{
+export async function registerUser(payload: { username: string; email: string; phoneNumber: string; password: string }): Promise<{
   token: string;
   user: User;
 }> {
   const database = await getDatabase();
   
   // Check if username already exists
-  const existing = database.exec(`SELECT id FROM User WHERE username = ?`, [payload.username]);
-  if (existing.length > 0 && existing[0].values.length > 0) {
+  const existingUsername = database.exec(`SELECT id FROM User WHERE username = ?`, [payload.username]);
+  if (existingUsername.length > 0 && existingUsername[0].values.length > 0) {
     throw new Error("Username already taken");
+  }
+
+  // Check if email already exists
+  const existingEmail = database.exec(`SELECT id FROM User WHERE email = ?`, [payload.email]);
+  if (existingEmail.length > 0 && existingEmail[0].values.length > 0) {
+    throw new Error("Email already registered");
+  }
+
+  // Check if phone number already exists
+  const existingPhone = database.exec(`SELECT id FROM User WHERE phoneNumber = ?`, [payload.phoneNumber]);
+  if (existingPhone.length > 0 && existingPhone[0].values.length > 0) {
+    throw new Error("Phone number already registered");
   }
 
   const id = generateUUID();
@@ -1020,9 +1036,9 @@ export async function registerUser(payload: { username: string; password: string
   const now = new Date().toISOString();
 
   database.run(
-    `INSERT INTO User (id, username, passwordHash, strikeCount, isBanned, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, payload.username, passwordHash, 0, 0, now]
+    `INSERT INTO User (id, username, email, phoneNumber, passwordHash, strikeCount, isBanned, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, payload.username, payload.email, payload.phoneNumber, passwordHash, 0, 0, now]
   );
 
   saveDatabase();
@@ -1034,32 +1050,39 @@ export async function registerUser(payload: { username: string; password: string
     user: {
       id,
       username: payload.username,
+      email: payload.email,
+      phoneNumber: payload.phoneNumber,
       strikeCount: 0,
       isBanned: false,
     },
   };
 }
 
-export async function loginUser(payload: { username: string; password: string }): Promise<{
+export async function loginUser(payload: { emailOrPhone: string; password: string }): Promise<{
   token: string;
   user: User;
 }> {
   const database = await getDatabase();
-  const result = database.exec(`SELECT id, username, passwordHash, strikeCount, isBanned FROM User WHERE username = ?`, [payload.username]);
+  
+  // Try to find user by email or phone number
+  const result = database.exec(
+    `SELECT id, username, email, phoneNumber, passwordHash, strikeCount, isBanned FROM User WHERE email = ? OR phoneNumber = ?`,
+    [payload.emailOrPhone, payload.emailOrPhone]
+  );
 
   if (result.length === 0 || result[0].values.length === 0) {
     throw new Error("Invalid credentials");
   }
 
   const row = result[0].values[0];
-  const passwordHash = row[2] as string;
+  const passwordHash = row[4] as string;
   const isValid = await verifyPassword(payload.password, passwordHash);
 
   if (!isValid) {
     throw new Error("Invalid credentials");
   }
 
-  const isBanned = (row[4] as number) === 1;
+  const isBanned = (row[6] as number) === 1;
   if (isBanned) {
     throw new Error("Your account has been banned");
   }
@@ -1071,7 +1094,9 @@ export async function loginUser(payload: { username: string; password: string })
     user: {
       id: row[0] as string,
       username: row[1] as string,
-      strikeCount: row[3] as number,
+      email: row[2] as string,
+      phoneNumber: row[3] as string,
+      strikeCount: row[5] as number,
       isBanned: false,
     },
   };
@@ -1088,7 +1113,7 @@ export async function fetchUserProfile(token: string): Promise<User> {
     throw new Error("Invalid token");
   }
 
-  const result = database.exec(`SELECT id, username, strikeCount, isBanned FROM User WHERE id = ?`, [userId]);
+  const result = database.exec(`SELECT id, username, email, phoneNumber, strikeCount, isBanned FROM User WHERE id = ?`, [userId]);
   if (result.length === 0 || result[0].values.length === 0) {
     throw new Error("User not found");
   }
@@ -1097,8 +1122,10 @@ export async function fetchUserProfile(token: string): Promise<User> {
   return {
     id: row[0] as string,
     username: row[1] as string,
-    strikeCount: row[2] as number,
-    isBanned: (row[3] as number) === 1,
+    email: row[2] as string,
+    phoneNumber: row[3] as string,
+    strikeCount: row[4] as number,
+    isBanned: (row[5] as number) === 1,
   };
 }
 
