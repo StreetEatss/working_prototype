@@ -77,3 +77,29 @@ export const fetchOwnerProfile = async (): Promise<OwnerProfile> => {
 export const updateTruckHours = async (truckId: string, schedule: ScheduleEntry[]) => {
   return await db.updateTruckHours(truckId, schedule);
 };
+
+export const updateTruckDescription = async (truckId: string, description: string) => {
+  return await db.updateTruckDescription(truckId, description);
+};
+
+export const fetchTruckForOwner = async (truckId: string): Promise<FoodTruck> => {
+  return await db.fetchTruckForOwner(truckId);
+};
+
+export const createMenuItem = async (
+  truckId: string,
+  payload: { name: string; description?: string; priceCents?: number; isFeatured?: boolean }
+): Promise<MenuItem> => {
+  return await db.createMenuItem(truckId, payload);
+};
+
+export const updateMenuItem = async (
+  menuItemId: string,
+  payload: { name?: string; description?: string; priceCents?: number; isFeatured?: boolean }
+): Promise<MenuItem> => {
+  return await db.updateMenuItem(menuItemId, payload);
+};
+
+export const deleteMenuItem = async (menuItemId: string): Promise<void> => {
+  return await db.deleteMenuItem(menuItemId);
+};

@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { isAxiosError } from "axios";
-import type { ScheduleEntry } from "../lib/api";
+import type { ScheduleEntry, MenuItem } from "../lib/api";
 import {
   fetchOwnerProfile,
   getStoredOwnerToken,
   loginOwner,
   setStoredOwnerToken,
   updateTruckHours,
+  updateTruckDescription,
+  fetchTruckForOwner,
+  createMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
 } from "../lib/api";
 
 const ownerDays: ScheduleEntry["day"][] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -47,6 +51,18 @@ export default function OwnerPortalPage() {
   const [editingTruckId, setEditingTruckId] = useState<string | null>(null);
   const [savingHours, setSavingHours] = useState(false);
   const [hoursError, setHoursError] = useState<string | null>(null);
+  
+  // Description editing
+  const [descriptionDraft, setDescriptionDraft] = useState("");
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  
+  // Menu item editing
+  const [editingMenuItemId, setEditingMenuItemId] = useState<string | null>(null);
+  const [menuItemDraft, setMenuItemDraft] = useState({ name: "", description: "", priceCents: "", isFeatured: false });
+  const [savingMenuItem, setSavingMenuItem] = useState(false);
+  const [menuItemError, setMenuItemError] = useState<string | null>(null);
+  const [showAddMenuItem, setShowAddMenuItem] = useState(false);
 
   const {
     data: ownerProfile,
@@ -59,6 +75,16 @@ export default function OwnerPortalPage() {
     enabled: Boolean(ownerToken),
   });
 
+  const {
+    data: currentTruck,
+    isLoading: truckLoading,
+    refetch: refetchTruck,
+  } = useQuery({
+    queryKey: ["truck-for-owner", editingTruckId],
+    queryFn: () => editingTruckId ? fetchTruckForOwner(editingTruckId) : null,
+    enabled: Boolean(editingTruckId),
+  });
+
   const ownerTrucks = ownerProfile?.trucks ?? [];
   const isOwnerAuthenticated = Boolean(ownerToken);
 
@@ -67,7 +93,11 @@ export default function OwnerPortalPage() {
     setOwnerToken(null);
     setEditingTruckId(null);
     setHoursDraft(createEmptyHours());
+    setDescriptionDraft("");
+    setEditingMenuItemId(null);
+    setShowAddMenuItem(false);
     queryClient.removeQueries({ queryKey: ["owner-profile"] });
+    queryClient.removeQueries({ queryKey: ["truck-for-owner"] });
   }, [queryClient]);
 
   useEffect(() => {
@@ -86,6 +116,7 @@ export default function OwnerPortalPage() {
   useEffect(() => {
     if (!editingTruckId) {
       setHoursDraft(createEmptyHours());
+      setDescriptionDraft("");
       return;
     }
     const current = ownerTrucks.find((truck) => truck.id === editingTruckId);
@@ -95,11 +126,10 @@ export default function OwnerPortalPage() {
   }, [editingTruckId, ownerTrucks]);
 
   useEffect(() => {
-    if (ownerError && isAxiosError(ownerError) && ownerError.response?.status === 401) {
-      setFeedback("Session expired. Please sign in again.");
-      handleOwnerLogout();
+    if (currentTruck) {
+      setDescriptionDraft(currentTruck.description || "");
     }
-  }, [ownerError, handleOwnerLogout]);
+  }, [currentTruck]);
 
   useEffect(() => {
     if (feedback) {
@@ -120,11 +150,7 @@ export default function OwnerPortalPage() {
       setLoginPassword("");
       await refetchOwnerProfile();
     } catch (err) {
-      if (isAxiosError(err)) {
-        setLoginError(err.response?.data?.message ?? "Unable to sign in. Please try again.");
-      } else {
-        setLoginError("Something went wrong. Please try again.");
-      }
+      setLoginError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
     } finally {
       setLoggingIn(false);
     }
@@ -157,16 +183,92 @@ export default function OwnerPortalPage() {
         .filter(Boolean) as Array<Pick<ScheduleEntry, "day" | "open" | "close">>;
 
       await updateTruckHours(editingTruckId, schedulePayload);
-      setFeedback("Hours updated. Your card will refresh shortly.");
-      await Promise.all([refetchOwnerProfile(), queryClient.invalidateQueries({ queryKey: ["trucks"] })]);
+      setFeedback("Hours updated successfully.");
+      await Promise.all([refetchOwnerProfile(), refetchTruck(), queryClient.invalidateQueries({ queryKey: ["trucks"] })]);
     } catch (err) {
-      if (isAxiosError(err)) {
-        setHoursError(err.response?.data?.message ?? "Couldn't save hours. Please try again.");
-      } else {
-        setHoursError("Couldn't save hours. Please try again.");
-      }
+      setHoursError(err instanceof Error ? err.message : "Couldn't save hours. Please try again.");
     } finally {
       setSavingHours(false);
+    }
+  };
+
+  const handleDescriptionSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingTruckId) return;
+    setDescriptionError(null);
+    setSavingDescription(true);
+    try {
+      await updateTruckDescription(editingTruckId, descriptionDraft);
+      setFeedback("Description updated successfully.");
+      await Promise.all([refetchTruck(), queryClient.invalidateQueries({ queryKey: ["trucks"] })]);
+    } catch (err) {
+      setDescriptionError(err instanceof Error ? err.message : "Couldn't save description. Please try again.");
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleMenuItemEdit = (item: MenuItem) => {
+    setEditingMenuItemId(item.id);
+    setMenuItemDraft({
+      name: item.name,
+      description: item.description || "",
+      priceCents: item.priceCents ? (item.priceCents / 100).toFixed(2) : "",
+      isFeatured: item.isFeatured,
+    });
+    setShowAddMenuItem(false);
+  };
+
+  const handleMenuItemCancel = () => {
+    setEditingMenuItemId(null);
+    setMenuItemDraft({ name: "", description: "", priceCents: "", isFeatured: false });
+    setShowAddMenuItem(false);
+  };
+
+  const handleMenuItemSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingTruckId) return;
+    setMenuItemError(null);
+    setSavingMenuItem(true);
+    try {
+      const priceCents = menuItemDraft.priceCents ? Math.round(parseFloat(menuItemDraft.priceCents) * 100) : undefined;
+      
+      if (editingMenuItemId) {
+        // Update existing
+        await updateMenuItem(editingMenuItemId, {
+          name: menuItemDraft.name,
+          description: menuItemDraft.description || undefined,
+          priceCents,
+          isFeatured: menuItemDraft.isFeatured,
+        });
+        setFeedback("Menu item updated successfully.");
+      } else {
+        // Create new
+        await createMenuItem(editingTruckId, {
+          name: menuItemDraft.name,
+          description: menuItemDraft.description || undefined,
+          priceCents,
+          isFeatured: menuItemDraft.isFeatured,
+        });
+        setFeedback("Menu item added successfully.");
+      }
+      await Promise.all([refetchTruck(), queryClient.invalidateQueries({ queryKey: ["trucks"] })]);
+      handleMenuItemCancel();
+    } catch (err) {
+      setMenuItemError(err instanceof Error ? err.message : "Couldn't save menu item. Please try again.");
+    } finally {
+      setSavingMenuItem(false);
+    }
+  };
+
+  const handleMenuItemDelete = async (itemId: string) => {
+    if (!confirm("Are you sure you want to delete this menu item?")) return;
+    try {
+      await deleteMenuItem(itemId);
+      setFeedback("Menu item deleted successfully.");
+      await Promise.all([refetchTruck(), queryClient.invalidateQueries({ queryKey: ["trucks"] })]);
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : "Couldn't delete menu item.");
     }
   };
 
@@ -176,7 +278,7 @@ export default function OwnerPortalPage() {
         <div>
           <p className="eyebrow owner-eyebrow">Owner Portal</p>
           <h1>StreetEats</h1>
-          <p className="subtitle">Update your truck hours anytime</p>
+          <p className="subtitle">Manage your food truck</p>
         </div>
         <Link to="/" className="owner-link-button ghost-button">
           ← Back to map
@@ -189,7 +291,7 @@ export default function OwnerPortalPage() {
         <div className="owner-console-head">
           <div>
             <p className="eyebrow owner-eyebrow">Owner Tools</p>
-            <h3>Manage your truck hours</h3>
+            <h3>Manage your truck</h3>
           </div>
           {isOwnerAuthenticated && (
             <button className="cta-button ghost" onClick={handleOwnerLogout}>
@@ -252,30 +354,180 @@ export default function OwnerPortalPage() {
                   ))}
                 </select>
 
-                <form className="hours-form" onSubmit={handleHoursSubmit}>
-                  <div className="hours-grid">
-                    {ownerDays.map((day) => (
-                      <div key={day} className="hours-row">
-                        <span className="hours-day">{day.slice(0, 3)}</span>
-                        <input
-                          type="time"
-                          value={hoursDraft[day].open}
-                          onChange={(event) => handleHoursChange(day, "open", event.target.value)}
+                {editingTruckId && (
+                  <>
+                    {/* Description Section */}
+                    <div className="owner-section">
+                      <h4 className="owner-section-title">Truck Description</h4>
+                      <form onSubmit={handleDescriptionSubmit}>
+                        <textarea
+                          value={descriptionDraft}
+                          onChange={(e) => setDescriptionDraft(e.target.value)}
+                          placeholder="Describe your food truck..."
+                          rows={4}
+                          style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
                         />
-                        <span className="hours-divider">–</span>
-                        <input
-                          type="time"
-                          value={hoursDraft[day].close}
-                          onChange={(event) => handleHoursChange(day, "close", event.target.value)}
-                        />
+                        {descriptionError && <p className="error-inline">{descriptionError}</p>}
+                        <button type="submit" className="submit-button" disabled={savingDescription}>
+                          {savingDescription ? "Saving..." : "Save Description"}
+                        </button>
+                      </form>
+                    </div>
+
+                    {/* Menu Items Section */}
+                    <div className="owner-section">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <h4 className="owner-section-title">Menu Items</h4>
+                        {!showAddMenuItem && !editingMenuItemId && (
+                          <button
+                            type="button"
+                            className="cta-button"
+                            onClick={() => {
+                              setShowAddMenuItem(true);
+                              setEditingMenuItemId(null);
+                              setMenuItemDraft({ name: "", description: "", priceCents: "", isFeatured: false });
+                            }}
+                          >
+                            + Add Item
+                          </button>
+                        )}
                       </div>
-                    ))}
-                  </div>
-                  {hoursError && <p className="error-inline">{hoursError}</p>}
-                  <button type="submit" className="submit-button" disabled={savingHours}>
-                    {savingHours ? "Saving..." : "Save hours"}
-                  </button>
-                </form>
+
+                      {(showAddMenuItem || editingMenuItemId) && (
+                        <form onSubmit={handleMenuItemSubmit} style={{ marginBottom: "1rem", padding: "1rem", border: "1px solid #ddd", borderRadius: "4px" }}>
+                          <label className="form-label">Item Name</label>
+                          <input
+                            type="text"
+                            value={menuItemDraft.name}
+                            onChange={(e) => setMenuItemDraft({ ...menuItemDraft, name: e.target.value })}
+                            required
+                            style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                          />
+                          <label className="form-label">Description (optional)</label>
+                          <textarea
+                            value={menuItemDraft.description}
+                            onChange={(e) => setMenuItemDraft({ ...menuItemDraft, description: e.target.value })}
+                            rows={2}
+                            style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                          />
+                          <label className="form-label">Price ($)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={menuItemDraft.priceCents}
+                            onChange={(e) => setMenuItemDraft({ ...menuItemDraft, priceCents: e.target.value })}
+                            style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+                          />
+                          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                            <input
+                              type="checkbox"
+                              checked={menuItemDraft.isFeatured}
+                              onChange={(e) => setMenuItemDraft({ ...menuItemDraft, isFeatured: e.target.checked })}
+                            />
+                            Featured item
+                          </label>
+                          {menuItemError && <p className="error-inline">{menuItemError}</p>}
+                          <div style={{ display: "flex", gap: "0.5rem" }}>
+                            <button type="submit" className="submit-button" disabled={savingMenuItem}>
+                              {savingMenuItem ? "Saving..." : editingMenuItemId ? "Update Item" : "Add Item"}
+                            </button>
+                            <button type="button" className="cta-button ghost" onClick={handleMenuItemCancel}>
+                              Cancel
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {truckLoading && <p>Loading menu items...</p>}
+                      {!truckLoading && currentTruck && (
+                        <div>
+                          {currentTruck.menuItems.length === 0 ? (
+                            <p>No menu items yet. Add your first item above.</p>
+                          ) : (
+                            <ul style={{ listStyle: "none", padding: 0 }}>
+                              {currentTruck.menuItems.map((item) => (
+                                <li
+                                  key={item.id}
+                                  style={{
+                                    padding: "1rem",
+                                    marginBottom: "0.5rem",
+                                    border: "1px solid #ddd",
+                                    borderRadius: "4px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                  }}
+                                >
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                                      <strong>{item.name}</strong>
+                                      {item.isFeatured && <span style={{ fontSize: "0.75rem", background: "#ffd700", padding: "0.2rem 0.5rem", borderRadius: "4px" }}>Featured</span>}
+                                    </div>
+                                    {item.description && <p style={{ margin: "0.25rem 0", color: "#666" }}>{item.description}</p>}
+                                    {item.priceCents && (
+                                      <p style={{ margin: "0.25rem 0", fontWeight: "bold" }}>
+                                        ${(item.priceCents / 100).toFixed(2)}
+                                      </p>
+                                    )}
+                                  </div>
+                                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                                    <button
+                                      type="button"
+                                      className="cta-button ghost"
+                                      onClick={() => handleMenuItemEdit(item)}
+                                      disabled={editingMenuItemId !== null || showAddMenuItem}
+                                    >
+                                      Edit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="cta-button ghost"
+                                      onClick={() => handleMenuItemDelete(item.id)}
+                                      disabled={editingMenuItemId !== null || showAddMenuItem}
+                                      style={{ color: "#d32f2f" }}
+                                    >
+                                      Delete
+                                    </button>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hours Section */}
+                    <div className="owner-section">
+                      <h4 className="owner-section-title">Operating Hours</h4>
+                      <form className="hours-form" onSubmit={handleHoursSubmit}>
+                        <div className="hours-grid">
+                          {ownerDays.map((day) => (
+                            <div key={day} className="hours-row">
+                              <span className="hours-day">{day.slice(0, 3)}</span>
+                              <input
+                                type="time"
+                                value={hoursDraft[day].open}
+                                onChange={(event) => handleHoursChange(day, "open", event.target.value)}
+                              />
+                              <span className="hours-divider">–</span>
+                              <input
+                                type="time"
+                                value={hoursDraft[day].close}
+                                onChange={(event) => handleHoursChange(day, "close", event.target.value)}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        {hoursError && <p className="error-inline">{hoursError}</p>}
+                        <button type="submit" className="submit-button" disabled={savingHours}>
+                          {savingHours ? "Saving..." : "Save Hours"}
+                        </button>
+                      </form>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -284,5 +536,3 @@ export default function OwnerPortalPage() {
     </div>
   );
 }
-
-

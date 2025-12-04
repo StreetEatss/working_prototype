@@ -28,7 +28,7 @@ let dbInitialized = false;
 
 const DB_STORAGE_KEY = "streeteats_db";
 const DB_VERSION_KEY = "streeteats_db_version";
-const CURRENT_VERSION = 2; // Incremented to trigger database refresh with new food trucks
+const CURRENT_VERSION = 3; // Incremented to add individual owner accounts per truck
 
 async function initDatabase(): Promise<Database> {
   if (db && dbInitialized) {
@@ -383,23 +383,34 @@ async function seedDatabase(db: Database) {
     );
   }
 
-  // Create default owner
-  const ownerId = generateUUID();
-  const passwordHash = await hashPassword("owner1234");
-  db.run(
-    `INSERT INTO Owner (id, name, email, passwordHash, createdAt)
-     VALUES (?, ?, ?, ?, ?)`,
-    [ownerId, "Demo Owner", "owner@streeteats.test", passwordHash, now]
-  );
+  // Create one owner account for each truck
+  const ownerCredentials: Array<{ truckName: string; email: string; password: string }> = [
+    { truckName: "Tacos Don Memo", email: "tacosdonmemo@streeteats.test", password: "tacos1234" },
+    { truckName: "Tyson Bees", email: "tysonbees@streeteats.test", password: "tyson1234" },
+    { truckName: "Hemo's", email: "hemos@streeteats.test", password: "hemos1234" },
+    { truckName: "Lyn's", email: "lyns@streeteats.test", password: "lyns1234" },
+    { truckName: "Sopoong", email: "sopoong@streeteats.test", password: "sopoong1234" },
+    { truckName: "Kami", email: "kami@streeteats.test", password: "kami1234" },
+    { truckName: "Caribbean Feast", email: "caribbeanfeast@streeteats.test", password: "caribbean1234" },
+  ];
 
-  // Link owner to Lyn's and Tacos Don Memo
-  for (const truckName of ["Lyn's", "Tacos Don Memo"]) {
-    if (truckIds[truckName]) {
+  for (const cred of ownerCredentials) {
+    if (truckIds[cred.truckName]) {
+      const ownerId = generateUUID();
+      const passwordHash = await hashPassword(cred.password);
+      const ownerName = cred.truckName + " Owner";
+      
+      db.run(
+        `INSERT INTO Owner (id, name, email, passwordHash, createdAt)
+         VALUES (?, ?, ?, ?, ?)`,
+        [ownerId, ownerName, cred.email, passwordHash, now]
+      );
+
       const accessId = generateUUID();
       db.run(
         `INSERT INTO OwnerTruckAccess (id, ownerId, truckId, role, createdAt)
          VALUES (?, ?, ?, ?, ?)`,
-        [accessId, ownerId, truckIds[truckName], "OWNER", now]
+        [accessId, ownerId, truckIds[cred.truckName], "OWNER", now]
       );
     }
   }
@@ -756,5 +767,182 @@ export async function updateTruckHours(
     truckId,
     typicalSchedule: schedule,
   };
+}
+
+export async function updateTruckDescription(
+  truckId: string,
+  description: string
+): Promise<{ truckId: string; description: string }> {
+  const database = await getDatabase();
+
+  database.run(`UPDATE FoodTruck SET description = ?, updatedAt = ? WHERE id = ?`, [
+    description,
+    new Date().toISOString(),
+    truckId,
+  ]);
+
+  saveDatabase();
+
+  return {
+    truckId,
+    description,
+  };
+}
+
+export async function fetchTruckForOwner(truckId: string): Promise<FoodTruck> {
+  const database = await getDatabase();
+  const truckResult = database.exec(`
+    SELECT id, name, description, cuisineType, imageUrl, venmoHandle, defaultLocation, 
+           defaultLatitude, defaultLongitude, typicalSchedule
+    FROM FoodTruck
+    WHERE id = ?
+  `, [truckId]);
+
+  if (truckResult.length === 0 || truckResult[0].values.length === 0) {
+    throw new Error("Truck not found");
+  }
+
+  const row = truckResult[0].values[0];
+  const truckIdFromDb = row[0] as string;
+
+  // Get menu items
+  const itemsResult = database.exec(`
+    SELECT m.id, m.name, m.description, m.priceCents, m.imageUrl, m.isFeatured,
+           AVG(r.rating) as avgRating
+    FROM MenuItem m
+    LEFT JOIN MenuReview r ON m.id = r.menuItemId
+    WHERE m.truckId = ?
+    GROUP BY m.id
+    ORDER BY m.isFeatured DESC, m.name ASC
+  `, [truckIdFromDb]);
+
+  const menuItems: MenuItem[] = [];
+  if (itemsResult.length > 0) {
+    for (const itemRow of itemsResult[0].values) {
+      menuItems.push({
+        id: itemRow[0] as string,
+        name: itemRow[1] as string,
+        description: itemRow[2] as string | null,
+        priceCents: itemRow[3] as number | null,
+        imageUrl: itemRow[4] as string | null,
+        isFeatured: (itemRow[5] as number) === 1,
+        averageRating: itemRow[6] ? Number(itemRow[6]) : null,
+      });
+    }
+  }
+
+  let typicalSchedule = null;
+  if (row[9]) {
+    try {
+      typicalSchedule = JSON.parse(row[9] as string);
+    } catch (e) {
+      // Ignore parse errors
+    }
+  }
+
+  return {
+    id: truckIdFromDb,
+    name: row[1] as string,
+    description: row[2] as string | null,
+    cuisineType: row[3] as string | null,
+    imageUrl: row[4] as string | null,
+    venmoHandle: row[5] as string | null,
+    defaultLocation: row[6] as string | null,
+    defaultLatitude: row[7] as number | null,
+    defaultLongitude: row[8] as number | null,
+    typicalSchedule,
+    latestStatus: null,
+    menuItems,
+  };
+}
+
+export async function createMenuItem(
+  truckId: string,
+  payload: {
+    name: string;
+    description?: string;
+    priceCents?: number;
+    isFeatured?: boolean;
+  }
+): Promise<MenuItem> {
+  const database = await getDatabase();
+  const id = generateUUID();
+
+  database.run(
+    `INSERT INTO MenuItem (id, name, description, priceCents, imageUrl, truckId, isFeatured)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      payload.name,
+      payload.description || null,
+      payload.priceCents || null,
+      null,
+      truckId,
+      payload.isFeatured ? 1 : 0,
+    ]
+  );
+
+  saveDatabase();
+
+  return {
+    id,
+    name: payload.name,
+    description: payload.description || null,
+    priceCents: payload.priceCents || null,
+    imageUrl: null,
+    averageRating: null,
+    isFeatured: payload.isFeatured || false,
+  };
+}
+
+export async function updateMenuItem(
+  menuItemId: string,
+  payload: {
+    name?: string;
+    description?: string;
+    priceCents?: number;
+    isFeatured?: boolean;
+  }
+): Promise<MenuItem> {
+  const database = await getDatabase();
+
+  // Get current item to merge updates
+  const currentResult = database.exec(
+    `SELECT name, description, priceCents, isFeatured FROM MenuItem WHERE id = ?`,
+    [menuItemId]
+  );
+
+  if (currentResult.length === 0 || currentResult[0].values.length === 0) {
+    throw new Error("Menu item not found");
+  }
+
+  const current = currentResult[0].values[0];
+  const name = payload.name ?? (current[0] as string);
+  const description = payload.description !== undefined ? payload.description : (current[1] as string | null);
+  const priceCents = payload.priceCents !== undefined ? payload.priceCents : (current[2] as number | null);
+  const isFeatured = payload.isFeatured !== undefined ? payload.isFeatured : ((current[3] as number) === 1);
+
+  database.run(
+    `UPDATE MenuItem SET name = ?, description = ?, priceCents = ?, isFeatured = ? WHERE id = ?`,
+    [name, description, priceCents, isFeatured ? 1 : 0, menuItemId]
+  );
+
+  saveDatabase();
+
+  return {
+    id: menuItemId,
+    name,
+    description,
+    priceCents,
+    imageUrl: null,
+    averageRating: null,
+    isFeatured,
+  };
+}
+
+export async function deleteMenuItem(menuItemId: string): Promise<void> {
+  const database = await getDatabase();
+  database.run(`DELETE FROM MenuItem WHERE id = ?`, [menuItemId]);
+  saveDatabase();
 }
 

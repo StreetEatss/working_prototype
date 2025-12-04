@@ -46,13 +46,22 @@ The app uses **sql.js** (SQLite compiled to WebAssembly) to run a full SQLite da
 - Stored in browser localStorage for persistence
 - Completely client-side - no server needed
 
-## Default Owner Account
+## Owner Accounts
 
-For testing the owner portal, use these credentials:
-- **Email:** `owner@streeteats.test`
-- **Password:** `owner1234`
+Each food truck has its own owner account. Use these credentials to log in:
 
-This account has access to manage hours for Lyn's and Tacos Don Memo food trucks.
+- **Tacos Don Memo:** `tacosdonmemo@streeteats.test` / `tacos1234`
+- **Tyson Bees:** `tysonbees@streeteats.test` / `tyson1234`
+- **Hemo's:** `hemos@streeteats.test` / `hemos1234`
+- **Lyn's:** `lyns@streeteats.test` / `lyns1234`
+- **Sopoong:** `sopoong@streeteats.test` / `sopoong1234`
+- **Kami:** `kami@streeteats.test` / `kami1234`
+- **Caribbean Feast:** `caribbeanfeast@streeteats.test` / `caribbean1234`
+
+Each owner can only edit their own truck's:
+- Description
+- Menu items (add, edit, delete)
+- Operating hours
 
 ## Project Structure
 
