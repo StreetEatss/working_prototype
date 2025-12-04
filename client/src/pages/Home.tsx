@@ -4,7 +4,16 @@ import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
 import type { FoodTruck } from "../lib/api";
-import { fetchTrucks, postMenuReview, postStatusUpdate } from "../lib/api";
+import {
+  fetchTrucks,
+  postMenuReview,
+  postStatusUpdate,
+  registerUser,
+  loginUser,
+  getStoredUserToken,
+  setStoredUserToken,
+  fetchUserProfile,
+} from "../lib/api";
 
 const statusCopy: Record<string, string> = {
   OPEN: "Open now",
@@ -76,6 +85,21 @@ export default function HomePage() {
   const [submittingStatus, setSubmittingStatus] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  
+  // User authentication
+  const [userToken, setUserToken] = useState<string | null>(() => getStoredUserToken());
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [isRegistering, setIsRegistering] = useState(false);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loggingIn, setLoggingIn] = useState(false);
+  
+  const { data: userProfile } = useQuery({
+    queryKey: ["user-profile", userToken],
+    queryFn: fetchUserProfile,
+    enabled: Boolean(userToken),
+  });
 
   const trucks = data ?? [];
   const selectedTruck: FoodTruck | undefined = useMemo(() => {
@@ -99,6 +123,10 @@ export default function HomePage() {
   const handleStatusSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedTruck) return;
+    if (!userToken) {
+      setShowLoginModal(true);
+      return;
+    }
     setSubmittingStatus(true);
     try {
       await postStatusUpdate(selectedTruck.id, {
@@ -113,8 +141,12 @@ export default function HomePage() {
       setFeedback("Thanks! Your update helps everyone grab lunch faster.");
       await refetch();
     } catch (err) {
-      console.error(err);
-      setFeedback("We couldn't save that update. Try again?");
+      const message = err instanceof Error ? err.message : "We couldn't save that update. Try again?";
+      if (message.includes("must be logged in")) {
+        setShowLoginModal(true);
+      } else {
+        setFeedback(message);
+      }
     } finally {
       setSubmittingStatus(false);
     }
@@ -123,6 +155,10 @@ export default function HomePage() {
   const handleReviewSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!selectedTruck || !reviewMenuItemId) return;
+    if (!userToken) {
+      setShowLoginModal(true);
+      return;
+    }
     setSubmittingReview(true);
     try {
       await postMenuReview(selectedTruck.id, {
@@ -136,11 +172,42 @@ export default function HomePage() {
       setFeedback("Review shared! Others will see it in the menu tab.");
       await refetch();
     } catch (err) {
-      console.error(err);
-      setFeedback("Couldn't submit review. Check your connection and try again.");
+      const message = err instanceof Error ? err.message : "Couldn't submit review. Check your connection and try again.";
+      if (message.includes("must be logged in")) {
+        setShowLoginModal(true);
+      } else {
+        setFeedback(message);
+      }
     } finally {
       setSubmittingReview(false);
     }
+  };
+
+  const handleUserLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoginError(null);
+    setLoggingIn(true);
+    try {
+      const response = isRegistering
+        ? await registerUser({ username: loginUsername, password: loginPassword })
+        : await loginUser({ username: loginUsername, password: loginPassword });
+      setStoredUserToken(response.token);
+      setUserToken(response.token);
+      setShowLoginModal(false);
+      setLoginUsername("");
+      setLoginPassword("");
+      setFeedback(`Welcome${isRegistering ? "! Account created." : " back!"}`);
+    } catch (err) {
+      setLoginError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleUserLogout = () => {
+    setStoredUserToken(null);
+    setUserToken(null);
+    setFeedback("Logged out successfully.");
   };
 
   const mapCenter: [number, number] = selectedTruck?.defaultLatitude && selectedTruck?.defaultLongitude
@@ -156,6 +223,23 @@ export default function HomePage() {
           <p className="subtitle">Live, crowd-verified food truck intel</p>
         </div>
         <div className="header-actions">
+          {userToken && userProfile ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+              <span>Logged in as {userProfile.username}</span>
+              {userProfile.strikeCount > 0 && (
+                <span style={{ color: userProfile.strikeCount >= 3 ? "#d32f2f" : "#ff9800" }}>
+                  Strikes: {userProfile.strikeCount}/3
+                </span>
+              )}
+              <button className="cta-button ghost" onClick={handleUserLogout}>
+                Logout
+              </button>
+            </div>
+          ) : (
+            <button className="cta-button" onClick={() => setShowLoginModal(true)}>
+              Login
+            </button>
+          )}
           <button className="cta-button" onClick={() => refetch()}>
             Refresh
           </button>
@@ -349,6 +433,93 @@ export default function HomePage() {
           </div>
         )}
       </section>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+          onClick={() => setShowLoginModal(false)}
+        >
+          <div
+            style={{
+              background: "white",
+              padding: "2rem",
+              borderRadius: "8px",
+              maxWidth: "400px",
+              width: "90%",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3>{isRegistering ? "Create Account" : "Login"}</h3>
+            <p style={{ marginBottom: "1rem", fontSize: "0.9rem", color: "#666" }}>
+              {isRegistering
+                ? "Create an account to post status updates and reviews"
+                : "Login to post status updates and reviews"}
+            </p>
+            <form onSubmit={handleUserLogin}>
+              <label className="form-label" htmlFor="user-username">
+                Username
+              </label>
+              <input
+                id="user-username"
+                type="text"
+                value={loginUsername}
+                onChange={(e) => setLoginUsername(e.target.value)}
+                placeholder="username"
+                required
+                style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+              />
+              <label className="form-label" htmlFor="user-password">
+                Password
+              </label>
+              <input
+                id="user-password"
+                type="password"
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                style={{ width: "100%", padding: "0.5rem", marginBottom: "0.5rem" }}
+              />
+              {loginError && <p className="error-inline" style={{ marginBottom: "0.5rem" }}>{loginError}</p>}
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "0.5rem" }}>
+                <button type="submit" className="submit-button" disabled={loggingIn} style={{ flex: 1 }}>
+                  {loggingIn ? "..." : isRegistering ? "Sign Up" : "Login"}
+                </button>
+                <button
+                  type="button"
+                  className="cta-button ghost"
+                  onClick={() => {
+                    setIsRegistering(!isRegistering);
+                    setLoginError(null);
+                  }}
+                >
+                  {isRegistering ? "Login instead" : "Sign up"}
+                </button>
+              </div>
+              <button
+                type="button"
+                className="cta-button ghost"
+                onClick={() => setShowLoginModal(false)}
+                style={{ width: "100%" }}
+              >
+                Cancel
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

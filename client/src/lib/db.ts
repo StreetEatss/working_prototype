@@ -28,7 +28,7 @@ let dbInitialized = false;
 
 const DB_STORAGE_KEY = "streeteats_db";
 const DB_VERSION_KEY = "streeteats_db_version";
-const CURRENT_VERSION = 3; // Incremented to add individual owner accounts per truck
+const CURRENT_VERSION = 4; // Incremented to add user accounts and flagging system
 
 async function initDatabase(): Promise<Database> {
   if (db && dbInitialized) {
@@ -154,9 +154,21 @@ async function createTables(db: Database) {
   `);
 
   db.run(`
+    CREATE TABLE IF NOT EXISTS User (
+      id TEXT PRIMARY KEY,
+      username TEXT UNIQUE NOT NULL,
+      passwordHash TEXT NOT NULL,
+      strikeCount INTEGER NOT NULL DEFAULT 0,
+      isBanned INTEGER NOT NULL DEFAULT 0,
+      createdAt TEXT NOT NULL
+    )
+  `);
+
+  db.run(`
     CREATE TABLE IF NOT EXISTS MenuReview (
       id TEXT PRIMARY KEY,
       menuItemId TEXT NOT NULL,
+      userId TEXT,
       rating INTEGER NOT NULL,
       tasteRating INTEGER,
       valueRating INTEGER,
@@ -165,7 +177,9 @@ async function createTables(db: Database) {
       reporterName TEXT,
       createdAt TEXT NOT NULL,
       locationSource TEXT,
-      FOREIGN KEY (menuItemId) REFERENCES MenuItem(id) ON DELETE CASCADE
+      isFlagged INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (menuItemId) REFERENCES MenuItem(id) ON DELETE CASCADE,
+      FOREIGN KEY (userId) REFERENCES User(id) ON DELETE SET NULL
     )
   `);
 
@@ -173,6 +187,7 @@ async function createTables(db: Database) {
     CREATE TABLE IF NOT EXISTS StatusUpdate (
       id TEXT PRIMARY KEY,
       truckId TEXT NOT NULL,
+      userId TEXT,
       status TEXT NOT NULL,
       latitude REAL,
       longitude REAL,
@@ -182,7 +197,9 @@ async function createTables(db: Database) {
       photoUrl TEXT,
       createdAt TEXT NOT NULL,
       source TEXT NOT NULL DEFAULT 'CROWD',
-      FOREIGN KEY (truckId) REFERENCES FoodTruck(id) ON DELETE CASCADE
+      isFlagged INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (truckId) REFERENCES FoodTruck(id) ON DELETE CASCADE,
+      FOREIGN KEY (userId) REFERENCES User(id) ON DELETE SET NULL
     )
   `);
 
@@ -455,6 +472,8 @@ export interface StatusUpdate {
   longitude?: number | null;
   createdAt: string;
   source?: string;
+  userId?: string | null;
+  isFlagged?: boolean;
 }
 
 export interface MenuReview {
@@ -463,6 +482,8 @@ export interface MenuReview {
   comment?: string | null;
   reporterName?: string | null;
   createdAt: string;
+  userId?: string | null;
+  isFlagged?: boolean;
 }
 
 export async function fetchTrucks(): Promise<FoodTruck[]> {
@@ -482,11 +503,11 @@ export async function fetchTrucks(): Promise<FoodTruck[]> {
   for (const row of rows) {
     const truckId = row[0] as string;
     
-    // Get latest status
+    // Get latest status (excluding flagged)
     const statusResult = database.exec(`
       SELECT id, status, note, reporterName, latitude, longitude, createdAt, source
       FROM StatusUpdate
-      WHERE truckId = ?
+      WHERE truckId = ? AND isFlagged = 0
       ORDER BY createdAt DESC
       LIMIT 1
     `, [truckId]);
@@ -506,10 +527,10 @@ export async function fetchTrucks(): Promise<FoodTruck[]> {
       };
     }
 
-    // Get menu items with average ratings
+    // Get menu items with average ratings (excluding flagged reviews)
     const itemsResult = database.exec(`
       SELECT m.id, m.name, m.description, m.priceCents, m.imageUrl, m.isFeatured,
-             AVG(r.rating) as avgRating
+             AVG(CASE WHEN r.isFlagged = 0 THEN r.rating ELSE NULL END) as avgRating
       FROM MenuItem m
       LEFT JOIN MenuReview r ON m.id = r.menuItemId
       WHERE m.truckId = ?
@@ -562,6 +583,7 @@ export async function fetchTrucks(): Promise<FoodTruck[]> {
 
 export async function postStatusUpdate(
   truckId: string,
+  userId: string,
   payload: {
     status: "OPEN" | "CLOSED" | "MOVED" | "UNKNOWN";
     note?: string;
@@ -571,15 +593,26 @@ export async function postStatusUpdate(
   }
 ): Promise<StatusUpdate> {
   const database = await getDatabase();
+  
+  // Check if user is banned
+  const userResult = database.exec(`SELECT isBanned FROM User WHERE id = ?`, [userId]);
+  if (userResult.length > 0 && userResult[0].values.length > 0) {
+    const isBanned = (userResult[0].values[0][0] as number) === 1;
+    if (isBanned) {
+      throw new Error("Your account has been banned. You cannot post updates.");
+    }
+  }
+
   const id = generateUUID();
   const now = new Date().toISOString();
 
   database.run(
-    `INSERT INTO StatusUpdate (id, truckId, status, note, reporterName, latitude, longitude, source, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO StatusUpdate (id, truckId, userId, status, note, reporterName, latitude, longitude, source, createdAt, isFlagged)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       truckId,
+      userId,
       payload.status,
       payload.note || null,
       payload.reporterName || null,
@@ -587,6 +620,7 @@ export async function postStatusUpdate(
       payload.longitude || null,
       "CROWD",
       now,
+      0,
     ]
   );
 
@@ -601,11 +635,14 @@ export async function postStatusUpdate(
     longitude: payload.longitude || null,
     createdAt: now,
     source: "CROWD",
+    userId,
+    isFlagged: false,
   };
 }
 
 export async function postMenuReview(
   _truckId: string,
+  userId: string,
   payload: {
     menuItemId: string;
     rating: number;
@@ -614,13 +651,23 @@ export async function postMenuReview(
   }
 ): Promise<MenuReview> {
   const database = await getDatabase();
+  
+  // Check if user is banned
+  const userResult = database.exec(`SELECT isBanned FROM User WHERE id = ?`, [userId]);
+  if (userResult.length > 0 && userResult[0].values.length > 0) {
+    const isBanned = (userResult[0].values[0][0] as number) === 1;
+    if (isBanned) {
+      throw new Error("Your account has been banned. You cannot post reviews.");
+    }
+  }
+
   const id = generateUUID();
   const now = new Date().toISOString();
 
   database.run(
-    `INSERT INTO MenuReview (id, menuItemId, rating, comment, reporterName, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, payload.menuItemId, payload.rating, payload.comment || null, payload.reporterName || null, now]
+    `INSERT INTO MenuReview (id, menuItemId, userId, rating, comment, reporterName, createdAt, isFlagged)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, payload.menuItemId, userId, payload.rating, payload.comment || null, payload.reporterName || null, now, 0]
   );
 
   saveDatabase();
@@ -631,6 +678,8 @@ export async function postMenuReview(
     comment: payload.comment || null,
     reporterName: payload.reporterName || null,
     createdAt: now,
+    userId,
+    isFlagged: false,
   };
 }
 
@@ -944,5 +993,331 @@ export async function deleteMenuItem(menuItemId: string): Promise<void> {
   const database = await getDatabase();
   database.run(`DELETE FROM MenuItem WHERE id = ?`, [menuItemId]);
   saveDatabase();
+}
+
+// User registration and login
+export interface User {
+  id: string;
+  username: string;
+  strikeCount: number;
+  isBanned: boolean;
+}
+
+export async function registerUser(payload: { username: string; password: string }): Promise<{
+  token: string;
+  user: User;
+}> {
+  const database = await getDatabase();
+  
+  // Check if username already exists
+  const existing = database.exec(`SELECT id FROM User WHERE username = ?`, [payload.username]);
+  if (existing.length > 0 && existing[0].values.length > 0) {
+    throw new Error("Username already taken");
+  }
+
+  const id = generateUUID();
+  const passwordHash = await hashPassword(payload.password);
+  const now = new Date().toISOString();
+
+  database.run(
+    `INSERT INTO User (id, username, passwordHash, strikeCount, isBanned, createdAt)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, payload.username, passwordHash, 0, 0, now]
+  );
+
+  saveDatabase();
+
+  const token = btoa(JSON.stringify({ id, username: payload.username }));
+
+  return {
+    token,
+    user: {
+      id,
+      username: payload.username,
+      strikeCount: 0,
+      isBanned: false,
+    },
+  };
+}
+
+export async function loginUser(payload: { username: string; password: string }): Promise<{
+  token: string;
+  user: User;
+}> {
+  const database = await getDatabase();
+  const result = database.exec(`SELECT id, username, passwordHash, strikeCount, isBanned FROM User WHERE username = ?`, [payload.username]);
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    throw new Error("Invalid credentials");
+  }
+
+  const row = result[0].values[0];
+  const passwordHash = row[2] as string;
+  const isValid = await verifyPassword(payload.password, passwordHash);
+
+  if (!isValid) {
+    throw new Error("Invalid credentials");
+  }
+
+  const isBanned = (row[4] as number) === 1;
+  if (isBanned) {
+    throw new Error("Your account has been banned");
+  }
+
+  const token = btoa(JSON.stringify({ id: row[0], username: row[1] }));
+
+  return {
+    token,
+    user: {
+      id: row[0] as string,
+      username: row[1] as string,
+      strikeCount: row[3] as number,
+      isBanned: false,
+    },
+  };
+}
+
+export async function fetchUserProfile(token: string): Promise<User> {
+  const database = await getDatabase();
+  
+  let userId: string;
+  try {
+    const decoded = JSON.parse(atob(token));
+    userId = decoded.id;
+  } catch {
+    throw new Error("Invalid token");
+  }
+
+  const result = database.exec(`SELECT id, username, strikeCount, isBanned FROM User WHERE id = ?`, [userId]);
+  if (result.length === 0 || result[0].values.length === 0) {
+    throw new Error("User not found");
+  }
+
+  const row = result[0].values[0];
+  return {
+    id: row[0] as string,
+    username: row[1] as string,
+    strikeCount: row[2] as number,
+    isBanned: (row[3] as number) === 1,
+  };
+}
+
+// Flagging functions for owners
+export async function flagStatusUpdate(statusUpdateId: string, ownerToken: string): Promise<void> {
+  const database = await getDatabase();
+  
+  // Verify owner token
+  let ownerId: string;
+  try {
+    const decoded = JSON.parse(atob(ownerToken));
+    ownerId = decoded.id;
+  } catch {
+    throw new Error("Invalid owner token");
+  }
+
+  // Get the status update and its truck
+  const statusResult = database.exec(`
+    SELECT s.userId, s.truckId
+    FROM StatusUpdate s
+    WHERE s.id = ?
+  `, [statusUpdateId]);
+
+  if (statusResult.length === 0 || statusResult[0].values.length === 0) {
+    throw new Error("Status update not found");
+  }
+
+  const userId = statusResult[0].values[0][0] as string | null;
+  const truckId = statusResult[0].values[0][1] as string;
+
+  // Verify owner has access to this truck
+  const accessResult = database.exec(`
+    SELECT id FROM OwnerTruckAccess
+    WHERE ownerId = ? AND truckId = ?
+  `, [ownerId, truckId]);
+
+  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+    throw new Error("You don't have permission to flag updates for this truck");
+  }
+
+  if (!userId) {
+    throw new Error("Cannot flag anonymous updates");
+  }
+
+  // Flag the status update
+  database.run(`UPDATE StatusUpdate SET isFlagged = 1 WHERE id = ?`, [statusUpdateId]);
+
+  // Increment user strike count
+  const userResult = database.exec(`SELECT strikeCount FROM User WHERE id = ?`, [userId]);
+  if (userResult.length > 0 && userResult[0].values.length > 0) {
+    const currentStrikes = userResult[0].values[0][0] as number;
+    const newStrikes = currentStrikes + 1;
+    
+    database.run(`UPDATE User SET strikeCount = ?, isBanned = ? WHERE id = ?`, [
+      newStrikes,
+      newStrikes >= 3 ? 1 : 0,
+      userId,
+    ]);
+  }
+
+  saveDatabase();
+}
+
+export async function flagMenuReview(reviewId: string, ownerToken: string): Promise<void> {
+  const database = await getDatabase();
+  
+  // Verify owner token
+  let ownerId: string;
+  try {
+    const decoded = JSON.parse(atob(ownerToken));
+    ownerId = decoded.id;
+  } catch {
+    throw new Error("Invalid owner token");
+  }
+
+  // Get the review and its menu item's truck
+  const reviewResult = database.exec(`
+    SELECT r.userId, m.truckId
+    FROM MenuReview r
+    JOIN MenuItem m ON r.menuItemId = m.id
+    WHERE r.id = ?
+  `, [reviewId]);
+
+  if (reviewResult.length === 0 || reviewResult[0].values.length === 0) {
+    throw new Error("Review not found");
+  }
+
+  const userId = reviewResult[0].values[0][0] as string | null;
+  const truckId = reviewResult[0].values[0][1] as string;
+
+  // Verify owner has access to this truck
+  const accessResult = database.exec(`
+    SELECT id FROM OwnerTruckAccess
+    WHERE ownerId = ? AND truckId = ?
+  `, [ownerId, truckId]);
+
+  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+    throw new Error("You don't have permission to flag reviews for this truck");
+  }
+
+  if (!userId) {
+    throw new Error("Cannot flag anonymous reviews");
+  }
+
+  // Flag the review
+  database.run(`UPDATE MenuReview SET isFlagged = 1 WHERE id = ?`, [reviewId]);
+
+  // Increment user strike count
+  const userResult = database.exec(`SELECT strikeCount FROM User WHERE id = ?`, [userId]);
+  if (userResult.length > 0 && userResult[0].values.length > 0) {
+    const currentStrikes = userResult[0].values[0][0] as number;
+    const newStrikes = currentStrikes + 1;
+    
+    database.run(`UPDATE User SET strikeCount = ?, isBanned = ? WHERE id = ?`, [
+      newStrikes,
+      newStrikes >= 3 ? 1 : 0,
+      userId,
+    ]);
+  }
+
+  saveDatabase();
+}
+
+// Get status updates and reviews for a truck (for owners to see and flag)
+export async function fetchTruckStatusUpdates(truckId: string, ownerToken: string): Promise<StatusUpdate[]> {
+  const database = await getDatabase();
+  
+  // Verify owner token
+  let ownerId: string;
+  try {
+    const decoded = JSON.parse(atob(ownerToken));
+    ownerId = decoded.id;
+  } catch {
+    throw new Error("Invalid owner token");
+  }
+
+  // Verify owner has access
+  const accessResult = database.exec(`
+    SELECT id FROM OwnerTruckAccess
+    WHERE ownerId = ? AND truckId = ?
+  `, [ownerId, truckId]);
+
+  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+    throw new Error("You don't have permission to view updates for this truck");
+  }
+
+  const result = database.exec(`
+    SELECT id, status, note, reporterName, latitude, longitude, createdAt, source, userId, isFlagged
+    FROM StatusUpdate
+    WHERE truckId = ?
+    ORDER BY createdAt DESC
+  `, [truckId]);
+
+  const updates: StatusUpdate[] = [];
+  if (result.length > 0) {
+    for (const row of result[0].values) {
+      updates.push({
+        id: row[0] as string,
+        status: row[1] as any,
+        note: row[2] as string | null,
+        reporterName: row[3] as string | null,
+        latitude: row[4] as number | null,
+        longitude: row[5] as number | null,
+        createdAt: row[6] as string,
+        source: row[7] as string,
+        userId: row[8] as string | null,
+        isFlagged: (row[9] as number) === 1,
+      });
+    }
+  }
+
+  return updates;
+}
+
+export async function fetchTruckMenuReviews(truckId: string, ownerToken: string): Promise<MenuReview[]> {
+  const database = await getDatabase();
+  
+  // Verify owner token
+  let ownerId: string;
+  try {
+    const decoded = JSON.parse(atob(ownerToken));
+    ownerId = decoded.id;
+  } catch {
+    throw new Error("Invalid owner token");
+  }
+
+  // Verify owner has access
+  const accessResult = database.exec(`
+    SELECT id FROM OwnerTruckAccess
+    WHERE ownerId = ? AND truckId = ?
+  `, [ownerId, truckId]);
+
+  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+    throw new Error("You don't have permission to view reviews for this truck");
+  }
+
+  const result = database.exec(`
+    SELECT r.id, r.rating, r.comment, r.reporterName, r.createdAt, r.userId, r.isFlagged
+    FROM MenuReview r
+    JOIN MenuItem m ON r.menuItemId = m.id
+    WHERE m.truckId = ?
+    ORDER BY r.createdAt DESC
+  `, [truckId]);
+
+  const reviews: MenuReview[] = [];
+  if (result.length > 0) {
+    for (const row of result[0].values) {
+      reviews.push({
+        id: row[0] as string,
+        rating: row[1] as number,
+        comment: row[2] as string | null,
+        reporterName: row[3] as string | null,
+        createdAt: row[4] as string,
+        userId: row[5] as string | null,
+        isFlagged: (row[6] as number) === 1,
+      });
+    }
+  }
+
+  return reviews;
 }
 

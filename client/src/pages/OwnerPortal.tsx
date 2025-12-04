@@ -13,6 +13,10 @@ import {
   createMenuItem,
   updateMenuItem,
   deleteMenuItem,
+  fetchTruckStatusUpdates,
+  fetchTruckMenuReviews,
+  flagStatusUpdate,
+  flagMenuReview,
 } from "../lib/api";
 
 const ownerDays: ScheduleEntry["day"][] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -63,6 +67,12 @@ export default function OwnerPortalPage() {
   const [savingMenuItem, setSavingMenuItem] = useState(false);
   const [menuItemError, setMenuItemError] = useState<string | null>(null);
   const [showAddMenuItem, setShowAddMenuItem] = useState(false);
+  
+  // Flagging
+  const [showFlaggingSection, setShowFlaggingSection] = useState(false);
+  const [statusUpdates, setStatusUpdates] = useState<any[]>([]);
+  const [menuReviews, setMenuReviews] = useState<any[]>([]);
+  const [loadingFlags, setLoadingFlags] = useState(false);
 
   const {
     data: ownerProfile,
@@ -490,6 +500,158 @@ export default function OwnerPortalPage() {
                                       Delete
                                     </button>
                                   </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Flagging Section */}
+                    <div className="owner-section">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                        <h4 className="owner-section-title">User Posts & Flagging</h4>
+                        <button
+                          type="button"
+                          className="cta-button"
+                          onClick={async () => {
+                            if (!showFlaggingSection) {
+                              setLoadingFlags(true);
+                              try {
+                                const token = getStoredOwnerToken();
+                                if (token && editingTruckId) {
+                                  const [updates, reviews] = await Promise.all([
+                                    fetchTruckStatusUpdates(editingTruckId),
+                                    fetchTruckMenuReviews(editingTruckId),
+                                  ]);
+                                  setStatusUpdates(updates);
+                                  setMenuReviews(reviews);
+                                  setShowFlaggingSection(true);
+                                }
+                              } catch (err) {
+                                setFeedback(err instanceof Error ? err.message : "Couldn't load posts.");
+                              } finally {
+                                setLoadingFlags(false);
+                              }
+                            } else {
+                              setShowFlaggingSection(false);
+                            }
+                          }}
+                        >
+                          {loadingFlags ? "Loading..." : showFlaggingSection ? "Hide Posts" : "View User Posts"}
+                        </button>
+                      </div>
+
+                      {showFlaggingSection && (
+                        <div>
+                          <h5 style={{ marginTop: "1rem", marginBottom: "0.5rem" }}>Status Updates</h5>
+                          {statusUpdates.length === 0 ? (
+                            <p>No user status updates yet.</p>
+                          ) : (
+                            <ul style={{ listStyle: "none", padding: 0 }}>
+                              {statusUpdates.map((update) => (
+                                <li
+                                  key={update.id}
+                                  style={{
+                                    padding: "0.75rem",
+                                    marginBottom: "0.5rem",
+                                    border: "1px solid #ddd",
+                                    borderRadius: "4px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    opacity: update.isFlagged ? 0.5 : 1,
+                                  }}
+                                >
+                                  <div>
+                                    <strong>{update.status}</strong>
+                                    {update.note && <p style={{ margin: "0.25rem 0" }}>{update.note}</p>}
+                                    {update.reporterName && <p style={{ fontSize: "0.85rem", color: "#666" }}>by {update.reporterName}</p>}
+                                    <p style={{ fontSize: "0.75rem", color: "#999" }}>
+                                      {new Date(update.createdAt).toLocaleString()}
+                                    </p>
+                                    {update.isFlagged && <span style={{ color: "#d32f2f" }}>⚠️ Flagged</span>}
+                                  </div>
+                                  {!update.isFlagged && (
+                                    <button
+                                      type="button"
+                                      className="cta-button ghost"
+                                      onClick={async () => {
+                                        if (confirm("Flag this update as incorrect? This will give the user a strike.")) {
+                                          try {
+                                            await flagStatusUpdate(update.id);
+                                            setFeedback("Update flagged. User strike count increased.");
+                                            const updates = await fetchTruckStatusUpdates(editingTruckId!);
+                                            setStatusUpdates(updates);
+                                            await refetchTruck();
+                                            queryClient.invalidateQueries({ queryKey: ["trucks"] });
+                                          } catch (err) {
+                                            setFeedback(err instanceof Error ? err.message : "Couldn't flag update.");
+                                          }
+                                        }
+                                      }}
+                                      style={{ color: "#d32f2f" }}
+                                    >
+                                      Flag
+                                    </button>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+
+                          <h5 style={{ marginTop: "1.5rem", marginBottom: "0.5rem" }}>Menu Reviews</h5>
+                          {menuReviews.length === 0 ? (
+                            <p>No user reviews yet.</p>
+                          ) : (
+                            <ul style={{ listStyle: "none", padding: 0 }}>
+                              {menuReviews.map((review) => (
+                                <li
+                                  key={review.id}
+                                  style={{
+                                    padding: "0.75rem",
+                                    marginBottom: "0.5rem",
+                                    border: "1px solid #ddd",
+                                    borderRadius: "4px",
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    opacity: review.isFlagged ? 0.5 : 1,
+                                  }}
+                                >
+                                  <div>
+                                    <strong>⭐ {review.rating}/5</strong>
+                                    {review.comment && <p style={{ margin: "0.25rem 0" }}>{review.comment}</p>}
+                                    {review.reporterName && <p style={{ fontSize: "0.85rem", color: "#666" }}>by {review.reporterName}</p>}
+                                    <p style={{ fontSize: "0.75rem", color: "#999" }}>
+                                      {new Date(review.createdAt).toLocaleString()}
+                                    </p>
+                                    {review.isFlagged && <span style={{ color: "#d32f2f" }}>⚠️ Flagged</span>}
+                                  </div>
+                                  {!review.isFlagged && (
+                                    <button
+                                      type="button"
+                                      className="cta-button ghost"
+                                      onClick={async () => {
+                                        if (confirm("Flag this review as incorrect? This will give the user a strike.")) {
+                                          try {
+                                            await flagMenuReview(review.id);
+                                            setFeedback("Review flagged. User strike count increased.");
+                                            const reviews = await fetchTruckMenuReviews(editingTruckId!);
+                                            setMenuReviews(reviews);
+                                            await refetchTruck();
+                                            queryClient.invalidateQueries({ queryKey: ["trucks"] });
+                                          } catch (err) {
+                                            setFeedback(err instanceof Error ? err.message : "Couldn't flag review.");
+                                          }
+                                        }
+                                      }}
+                                      style={{ color: "#d32f2f" }}
+                                    >
+                                      Flag
+                                    </button>
+                                  )}
                                 </li>
                               ))}
                             </ul>
