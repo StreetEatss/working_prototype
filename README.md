@@ -10,7 +10,6 @@ StreetEats is accessable at [https://working-prototype.vercel.app/](url)
 ## Tech stack
 - **Frontend:** React 19 + Vite + TypeScript, React Router (HashRouter), TanStack React Query for data fetching, React Leaflet for maps, and axios for HTTP requests.
 - **Data layer:** Supabase REST/PostgREST tables with tokens stored in `localStorage` for both diner and owner sessions.
-- **Backend (server/):** Express + TypeScript API backed by Prisma and SQLite. The `prisma/seed.ts` script loads sample trucks, menu items, statuses, and the default owner account.
 - **Styling:** Custom CSS via `App.css` and `index.css`.
 
 
