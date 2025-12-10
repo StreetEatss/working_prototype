@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import { useQuery } from "@tanstack/react-query";
 import L from "leaflet";
@@ -110,6 +110,8 @@ export default function HomePage() {
     const active = selectedId ? trucks.find((truck) => truck.id === selectedId) : undefined;
     return active ?? trucks[0];
   }, [selectedId, trucks]);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (selectedTruck?.menuItems?.length) {
@@ -320,10 +322,13 @@ export default function HomePage() {
         <div className="truck-scroll">
           {trucks.map((truck) => (
             <article
-              key={truck.id}
-              className={`truck-card ${selectedTruck?.id === truck.id ? "active" : ""}`}
-              onClick={() => setSelectedId(truck.id)}
-            >
+  key={truck.id}
+  className={`truck-card ${selectedTruck?.id === truck.id ? "active" : ""}`}
+  onClick={() => {
+    setSelectedId(truck.id);       // keep local highlight
+    navigate(`/trucks/${truck.id}`); // go to detail page
+  }}
+>
               <div className="truck-card-header">
                 <div>
                   <h3>{truck.name}</h3>

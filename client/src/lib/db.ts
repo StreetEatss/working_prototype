@@ -69,6 +69,7 @@ export interface MenuItem {
   imageUrl?: string | null;
   averageRating?: number | null;
   isFeatured: boolean;
+  reviews?: MenuReview[];
 }
 
 export interface StatusUpdate {
@@ -153,11 +154,29 @@ export async function fetchTrucks(): Promise<FoodTruck[]> {
 
   // 3) Fetch menu items with reviews to compute avg ratings
   const { data: menuData, error: menuError } = await supabase
-    .from("menuitem")
-    .select(
-      "id, name, description, pricecents, imageurl, isfeatured, truckid, menureview(rating, isflagged)"
-    )
-    .in("truckid", truckIds);
+  .from("menuitem")
+  .select(
+    `
+      id,
+      name,
+      description,
+      pricecents,
+      imageurl,
+      isfeatured,
+      truckid,
+      menureview (
+        id,
+        rating,
+        comment,
+        reportername,
+        createdat,
+        userid,
+        isflagged
+      )
+    `
+  )
+  .in("truckid", truckIds);
+
 
   if (menuError) {
     console.error(menuError);
@@ -165,34 +184,47 @@ export async function fetchTrucks(): Promise<FoodTruck[]> {
   }
 
   const itemsByTruck: Record<string, MenuItem[]> = {};
-  if (menuData) {
-    for (const row of menuData as any[]) {
-      const reviews =
-        (row.menureview || []) as { rating: number; isflagged: boolean }[];
+if (menuData) {
+  for (const row of menuData as any[]) {
+    // Raw reviews from the relation
+    const rawReviews = (row.menureview || []) as any[];
 
-      const validRatings = reviews
-        .filter((r) => !r.isflagged)
-        .map((r) => r.rating);
-      const avgRating =
-        validRatings.length > 0
-          ? validRatings.reduce((a, b) => a + b, 0) / validRatings.length
-          : null;
+    // Map to our MenuReview type & filter out flagged
+    const reviews: MenuReview[] = rawReviews
+      .map((r) => ({
+        id: r.id as string,
+        rating: r.rating as number,
+        comment: r.comment ?? null,
+        reporterName: r.reportername ?? null,
+        createdAt: r.createdat as string,
+        userId: (r.userid as string) ?? null,
+        isFlagged: !!r.isflagged,
+      }))
+      .filter((r) => !r.isFlagged);
 
-      const item: MenuItem = {
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        priceCents: row.pricecents,
-        imageUrl: row.imageurl,
-        isFeatured: row.isfeatured === true || row.isfeatured === 1,
-        averageRating: avgRating,
-      };
+    const validRatings = reviews.map((r) => r.rating);
+    const avgRating =
+      validRatings.length > 0
+        ? validRatings.reduce((a, b) => a + b, 0) / validRatings.length
+        : null;
 
-      const truckId = row.truckid as string;
-      if (!itemsByTruck[truckId]) itemsByTruck[truckId] = [];
-      itemsByTruck[truckId].push(item);
-    }
+    const item: MenuItem = {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      priceCents: row.pricecents,
+      imageUrl: row.imageurl,
+      isFeatured: row.isfeatured === true || row.isfeatured === 1,
+      averageRating: avgRating,
+      reviews, // 👈 attach reviews here
+    };
+
+    const truckId = row.truckid as string;
+    if (!itemsByTruck[truckId]) itemsByTruck[truckId] = [];
+    itemsByTruck[truckId].push(item);
   }
+}
+
 
   // 4) Build FoodTruck objects
   const trucks: FoodTruck[] = trucksData.map((t: any) => {
