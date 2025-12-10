@@ -1,6 +1,11 @@
 # StreetEats Web App
 
-Mobile-first web experience for Penn/University City students to discover food trucks, share live status updates, and review menu items. The app runs entirely in the browser using SQLite (via sql.js) with no backend server required!
+StreetEats is a mobile-first web app for Penn/University City students to find campus food trucks, share live intel, and let truck owners manage their menus and schedules. The app is built for quick map-first discovery and lightweight moderation so owners can keep information trustworthy.
+
+## Live site
+StreetEats is accessable at [https://working-prototype.vercel.app/](url)
+
+
 
 ## Tech Stack
 - **Frontend:** React + Vite + TypeScript, React Query, React Leaflet, React Router
