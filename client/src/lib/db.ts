@@ -257,19 +257,20 @@ export async function postStatusUpdate(
   const id = generateUUID();
   const now = new Date().toISOString();
 
-  const { error: insertError } = await supabase.from("statusupdate").insert({
-    id,
-    truckid: truckId,
-    userid: userId,
-    status: payload.status,
-    note: payload.note ?? null,
-    reportername: payload.reporterName ?? null,
-    latitude: payload.latitude ?? null,
-    longitude: payload.longitude ?? null,
-    source: "CROWD",
-    createdat: now,
-    isflagged: false,
-  });
+const { error: insertError } = await supabase.from("statusupdate").insert({
+  id,
+  truckid: truckId,
+  userid: userId,
+  status: payload.status,
+  note: payload.note ?? null,
+  reportername: payload.reporterName ?? null,
+  latitude: payload.latitude ?? null,
+  longitude: payload.longitude ?? null,
+  source: "CROWD",
+  createdat: now,
+  isflagged: 0,
+});
+
 
   if (insertError) {
     console.error(insertError);
@@ -319,16 +320,17 @@ export async function postMenuReview(
   const id = generateUUID();
   const now = new Date().toISOString();
 
-  const { error: insertError } = await supabase.from("menureview").insert({
-    id,
-    menuitemid: payload.menuItemId,
-    userid: userId,
-    rating: payload.rating,
-    comment: payload.comment ?? null,
-    reportername: payload.reporterName ?? null,
-    createdat: now,
-    isflagged: false,
-  });
+const { error: insertError } = await supabase.from("menureview").insert({
+  id,
+  menuitemid: payload.menuItemId,
+  userid: userId,
+  rating: payload.rating,
+  comment: payload.comment ?? null,
+  reportername: payload.reporterName ?? null,
+  createdat: now,
+  isflagged: 0,
+});
+
 
   if (insertError) {
     console.error(insertError);
@@ -931,10 +933,11 @@ export async function flagStatusUpdate(
   }
 
   // Flag the status update
-  const { error: updateStatusError } = await supabase
-    .from("statusupdate")
-    .update({ isflagged: true })
-    .eq("id", statusUpdateId);
+const { error: updateStatusError } = await supabase
+  .from("statusupdate")
+  .update({ isflagged: 1 })
+  .eq("id", statusUpdateId);
+
 
   if (updateStatusError) {
     console.error(updateStatusError);
@@ -1037,10 +1040,10 @@ export async function flagMenuReview(
   }
 
   // Flag the review
-  const { error: updateReviewError } = await supabase
-    .from("menureview")
-    .update({ isflagged: true })
-    .eq("id", reviewId);
+const { error: updateReviewError } = await supabase
+  .from("menureview")
+  .update({ isflagged: 1 })
+  .eq("id", reviewId);
 
   if (updateReviewError) {
     console.error(updateReviewError);
