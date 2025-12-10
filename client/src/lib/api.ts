@@ -1,4 +1,4 @@
-// Client-side API using SQLite in the browser
+// Client-side API backed by Supabase REST endpoints
 import * as db from "./db";
 
 const OWNER_TOKEN_KEY = "streeteats_owner_token";

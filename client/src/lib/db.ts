@@ -142,165 +142,6 @@ function ensureTokenDecoded(token: string): { id: string } {
   }
 }
 
-const seedTrucks = [
-    {
-      name: "Tacos Don Memo",
-      description: "Authentic Mexican tacos, burritos, and more. West side of 38th between Spruce & Locust, under Locust Walk bridge.",
-      cuisineType: "Mexican",
-      imageUrl: "https://images.unsplash.com/photo-1608039829574-358155f866f5?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "270 S 38th St, Philadelphia, PA 19104 (west side of 38th between Spruce & Locust, under Locust Walk bridge)",
-      defaultLatitude: 39.9534,
-      defaultLongitude: -75.1981,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Taco (asada / pollo / pastor / carnitas, single)", priceCents: 500 },
-        { name: "Burrito (choice of meat or veggie)", priceCents: 1350 },
-        { name: "Quesadilla", priceCents: 1350 },
-        { name: "Torta (Mexican sandwich)", priceCents: 1350 },
-        { name: "Birria Tacos (3)", priceCents: 1800, isFeatured: true },
-        { name: "Guacamole & Chips", priceCents: 1200 },
-      ],
-    },
-    {
-      name: "Tyson Bees",
-      description: "Korean BBQ and Thai fusion. Korean BBQ beef short rib tacos, Thai basil chicken, and more.",
-      cuisineType: "Korean",
-      imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "33rd St & Spruce St, Philadelphia, PA 19104 (near Franklin Field / Penn Museum side)",
-      defaultLatitude: 39.9524,
-      defaultLongitude: -75.1931,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Korean BBQ Beef Short Rib Tacos (per taco)", priceCents: 425 },
-        { name: "Thai Basil Chicken Tacos (per taco)", priceCents: 425 },
-        { name: "Korean BBQ Beef Short Rib & Kimchi Burrito", priceCents: 1000 },
-        { name: "BBQ Lemongrass Pork over Rice", priceCents: 950 },
-        { name: "Thai Basil Chicken over Rice", priceCents: 950 },
-        { name: "O.G. Dog (beef hot dog w/ short rib & kimchi)", priceCents: 700, isFeatured: true },
-        { name: "Kimchi Dog / Beef Dog", priceCents: 700 },
-      ],
-    },
-    {
-      name: "Hemo's",
-      description: "Breakfast sandwiches, shawarma, and cheesesteaks. South side of Spruce just below the 37th St entrance to the Quad.",
-      cuisineType: "Middle Eastern",
-      imageUrl: "https://images.unsplash.com/photo-1504753793650-d4a2b783c15c?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "37th & Spruce St, Philadelphia, PA 19104 (south side of Spruce just below the 37th St entrance to the Quad)",
-      defaultLatitude: 39.9524,
-      defaultLongitude: -75.1931,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Egg & Cheese Sandwich (roll)", priceCents: 450 },
-        { name: "Chicken Sausage, Egg & Cheese Sandwich", priceCents: 575 },
-        { name: "Grilled Chicken \"Hemo's Shawarma\" Sandwich", priceCents: 900, isFeatured: true },
-        { name: "Shawarma Combo (sandwich + fries / drink)", priceCents: 1300 },
-        { name: "Cheesesteak (standard)", priceCents: 950 },
-      ],
-    },
-  ];
-
-async function seedDefaultData() {
-  try {
-    const trucks = await supabaseRequest<any[]>("FoodTruck?select=id&limit=1");
-    if (trucks.length > 0) return;
-
-    const now = new Date().toISOString();
-
-    for (const truck of seedTrucks) {
-      const truckId = generateId();
-      await supabaseRequest("FoodTruck", {
-        method: "POST",
-        headers: { ...headers, Prefer: "return=minimal" },
-        body: JSON.stringify({
-          id: truckId,
-          name: truck.name,
-          description: truck.description,
-          cuisineType: truck.cuisineType,
-          imageUrl: truck.imageUrl,
-          venmoHandle: truck.venmoHandle,
-          defaultLocation: truck.defaultLocation,
-          defaultLatitude: truck.defaultLatitude,
-          defaultLongitude: truck.defaultLongitude,
-          typicalSchedule: null,
-          createdAt: now,
-          updatedAt: now,
-        }),
-      });
-
-      for (const item of truck.menuItems) {
-        await supabaseRequest("MenuItem", {
-          method: "POST",
-          headers: { ...headers, Prefer: "return=minimal" },
-          body: JSON.stringify({
-            id: generateId(),
-            name: item.name,
-            description: (item as any).description ?? null,
-            priceCents: item.priceCents ?? null,
-            imageUrl: null,
-            truckId,
-            isFeatured: (item as any).isFeatured ? 1 : 0,
-          }),
-        });
-      }
-
-      await supabaseRequest("StatusUpdate", {
-        method: "POST",
-        headers: { ...headers, Prefer: "return=minimal" },
-        body: JSON.stringify({
-          id: generateId(),
-          truckId,
-          status: "OPEN",
-          note: "Serving lunch until 3pm",
-          reporterName: "StreetEats Team",
-          latitude: truck.defaultLatitude,
-          longitude: truck.defaultLongitude,
-          reliability: 0.9,
-          source: "ADMIN",
-          createdAt: now,
-          isFlagged: 0,
-        }),
-      });
-    }
-  } catch (error) {
-    console.warn("Supabase seeding skipped; using local demo data instead.", error);
-  }
-}
-
-function buildDemoTrucks(): FoodTruck[] {
-  return seedTrucks.map((truck) => ({
-    id: generateId(),
-    name: truck.name,
-    description: truck.description,
-    cuisineType: truck.cuisineType,
-    imageUrl: truck.imageUrl,
-    venmoHandle: truck.venmoHandle,
-    defaultLocation: truck.defaultLocation,
-    defaultLatitude: truck.defaultLatitude,
-    defaultLongitude: truck.defaultLongitude,
-    typicalSchedule: null,
-    latestStatus: {
-      id: generateId(),
-      status: "OPEN",
-      note: "Serving lunch until 3pm",
-      reporterName: "StreetEats Team",
-      latitude: truck.defaultLatitude,
-      longitude: truck.defaultLongitude,
-      createdAt: new Date().toISOString(),
-      source: "ADMIN",
-      isFlagged: false,
-    },
-    menuItems: (truck.menuItems || []).map((item) => ({
-      id: generateId(),
-      name: item.name,
-      description: (item as any).description ?? null,
-      priceCents: item.priceCents ?? null,
-      imageUrl: null,
-      isFeatured: Boolean((item as any).isFeatured),
-      averageRating: null,
-    })),
-  }));
-}
-
 function buildMenuItems(rawItems: any[]): MenuItem[] {
   return (rawItems || []).map((item) => {
     const reviews = (item.MenuReview || []) as any[];
@@ -319,51 +160,44 @@ function buildMenuItems(rawItems: any[]): MenuItem[] {
 }
 
 export async function fetchTrucks(): Promise<FoodTruck[]> {
-  try {
-    await seedDefaultData();
+  const trucks = await supabaseRequest<any[]>(
+    "FoodTruck?select=id,name,description,cuisineType,imageUrl,venmoHandle,defaultLocation,defaultLatitude,defaultLongitude,typicalSchedule,StatusUpdate(*),MenuItem(*,MenuReview(*))&order=name.asc"
+  );
 
-    const trucks = await supabaseRequest<any[]>(
-      "FoodTruck?select=id,name,description,cuisineType,imageUrl,venmoHandle,defaultLocation,defaultLatitude,defaultLongitude,typicalSchedule,StatusUpdate(*),MenuItem(*,MenuReview(*))&order=name.asc"
-    );
+  return trucks.map((truck) => {
+    const statuses = (truck.StatusUpdate || []) as any[];
+    const latestStatus = statuses
+      .filter((s) => !s.isFlagged)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
-    return trucks.map((truck) => {
-      const statuses = (truck.StatusUpdate || []) as any[];
-      const latestStatus = statuses
-        .filter((s) => !s.isFlagged)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-
-      return {
-        id: truck.id,
-        name: truck.name,
-        description: truck.description,
-        cuisineType: truck.cuisineType,
-        imageUrl: truck.imageUrl,
-        venmoHandle: truck.venmoHandle,
-        defaultLocation: truck.defaultLocation,
-        defaultLatitude: truck.defaultLatitude,
-        defaultLongitude: truck.defaultLongitude,
-        typicalSchedule: truck.typicalSchedule,
-        latestStatus: latestStatus
-          ? {
-              id: latestStatus.id,
-              status: latestStatus.status,
-              note: latestStatus.note,
-              reporterName: latestStatus.reporterName,
-              latitude: latestStatus.latitude,
-              longitude: latestStatus.longitude,
-              createdAt: latestStatus.createdAt,
-              source: latestStatus.source,
-              userId: latestStatus.userId,
-              isFlagged: Boolean(latestStatus.isFlagged),
-            }
-          : null,
-        menuItems: buildMenuItems(truck.MenuItem || []),
-      } as FoodTruck;
-    });
-  } catch (error) {
-    console.error("Falling back to demo data; Supabase fetch failed", error);
-    return buildDemoTrucks();
-  }
+    return {
+      id: truck.id,
+      name: truck.name,
+      description: truck.description,
+      cuisineType: truck.cuisineType,
+      imageUrl: truck.imageUrl,
+      venmoHandle: truck.venmoHandle,
+      defaultLocation: truck.defaultLocation,
+      defaultLatitude: truck.defaultLatitude,
+      defaultLongitude: truck.defaultLongitude,
+      typicalSchedule: truck.typicalSchedule ?? [],
+      latestStatus: latestStatus
+        ? {
+            id: latestStatus.id,
+            status: latestStatus.status,
+            note: latestStatus.note,
+            reporterName: latestStatus.reporterName,
+            latitude: latestStatus.latitude,
+            longitude: latestStatus.longitude,
+            createdAt: latestStatus.createdAt,
+            source: latestStatus.source,
+            userId: latestStatus.userId,
+            isFlagged: Boolean(latestStatus.isFlagged),
+          }
+        : null,
+      menuItems: buildMenuItems(truck.MenuItem || []),
+    } as FoodTruck;
+  });
 }
 
 export async function postStatusUpdate(
