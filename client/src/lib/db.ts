@@ -1,5 +1,26 @@
-import initSqlJs from "sql.js";
-import type { Database } from "sql.js";
+// client/src/lib/db.ts
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+
+// ---------- Supabase client setup ----------
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseKey = import.meta.env
+  .VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY as string;
+
+if (!supabaseUrl || !supabaseKey) {
+  console.error(
+    "Supabase URL or key is missing. Check your VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY env vars."
+  );
+}
+
+const supabase: SupabaseClient = createClient(supabaseUrl, supabaseKey);
+
+export async function getDatabase(): Promise<SupabaseClient> {
+  // Kept the name/signature for compatibility with old code.
+  return supabase;
+}
+
+// ---------- Helpers ----------
 
 // Simple password hashing for client-side (not secure, but works for demo)
 async function hashPassword(password: string): Promise<string> {
@@ -23,422 +44,7 @@ function generateUUID(): string {
   });
 }
 
-let db: Database | null = null;
-let dbInitialized = false;
-
-const DB_STORAGE_KEY = "streeteats_db";
-const DB_VERSION_KEY = "streeteats_db_version";
-const CURRENT_VERSION = 5; // Incremented to add email and phone number to user accounts
-
-async function initDatabase(): Promise<Database> {
-  if (db && dbInitialized) {
-    return db;
-  }
-
-  const SQL = await initSqlJs({
-    locateFile: (file: string) => {
-      // Use CDN for production, local for dev
-      if (import.meta.env.PROD) {
-        return `https://sql.js.org/dist/${file}`;
-      }
-      return `https://sql.js.org/dist/${file}`;
-    },
-  });
-
-  // Check database version - if outdated, clear and recreate
-  const storedVersion = localStorage.getItem(DB_VERSION_KEY);
-  if (storedVersion && parseInt(storedVersion) < CURRENT_VERSION) {
-    console.log(`Database version ${storedVersion} is outdated. Updating to version ${CURRENT_VERSION}...`);
-    localStorage.removeItem(DB_STORAGE_KEY);
-    localStorage.removeItem(DB_VERSION_KEY);
-  }
-
-  // Try to load from localStorage
-  const stored = localStorage.getItem(DB_STORAGE_KEY);
-  if (stored) {
-    try {
-      const uint8Array = new Uint8Array(JSON.parse(stored));
-      db = new SQL.Database(uint8Array);
-      // Verify version matches
-      const currentStoredVersion = localStorage.getItem(DB_VERSION_KEY);
-      if (currentStoredVersion && parseInt(currentStoredVersion) === CURRENT_VERSION) {
-        dbInitialized = true;
-        return db;
-      } else {
-        // Version mismatch, recreate database
-        console.log("Database version mismatch, recreating...");
-        localStorage.removeItem(DB_STORAGE_KEY);
-        localStorage.removeItem(DB_VERSION_KEY);
-        db = null;
-      }
-    } catch (e) {
-      console.warn("Failed to load database from storage, creating new one", e);
-      localStorage.removeItem(DB_STORAGE_KEY);
-      localStorage.removeItem(DB_VERSION_KEY);
-    }
-  }
-
-  // Create new database
-  db = new SQL.Database();
-  await createTables(db);
-  await seedDatabase(db);
-  saveDatabase();
-  dbInitialized = true;
-  return db;
-}
-
-function saveDatabase() {
-  if (!db) return;
-  try {
-    const data = db.export();
-    const array = Array.from(data);
-    localStorage.setItem(DB_STORAGE_KEY, JSON.stringify(array));
-    localStorage.setItem(DB_VERSION_KEY, CURRENT_VERSION.toString());
-  } catch (e) {
-    console.error("Failed to save database", e);
-  }
-}
-
-async function createTables(db: Database) {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS FoodTruck (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      cuisineType TEXT,
-      imageUrl TEXT,
-      venmoHandle TEXT,
-      defaultLocation TEXT,
-      defaultLatitude REAL,
-      defaultLongitude REAL,
-      typicalSchedule TEXT,
-      createdAt TEXT NOT NULL,
-      updatedAt TEXT NOT NULL
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS Owner (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      passwordHash TEXT NOT NULL,
-      createdAt TEXT NOT NULL
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS OwnerTruckAccess (
-      id TEXT PRIMARY KEY,
-      ownerId TEXT NOT NULL,
-      truckId TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'OWNER',
-      createdAt TEXT NOT NULL,
-      FOREIGN KEY (ownerId) REFERENCES Owner(id) ON DELETE CASCADE,
-      FOREIGN KEY (truckId) REFERENCES FoodTruck(id) ON DELETE CASCADE,
-      UNIQUE(ownerId, truckId)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS MenuItem (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      description TEXT,
-      priceCents INTEGER,
-      imageUrl TEXT,
-      truckId TEXT NOT NULL,
-      isFeatured INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY (truckId) REFERENCES FoodTruck(id) ON DELETE CASCADE
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS User (
-      id TEXT PRIMARY KEY,
-      username TEXT UNIQUE NOT NULL,
-      email TEXT UNIQUE NOT NULL,
-      phoneNumber TEXT UNIQUE NOT NULL,
-      passwordHash TEXT NOT NULL,
-      strikeCount INTEGER NOT NULL DEFAULT 0,
-      isBanned INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS MenuReview (
-      id TEXT PRIMARY KEY,
-      menuItemId TEXT NOT NULL,
-      userId TEXT,
-      rating INTEGER NOT NULL,
-      tasteRating INTEGER,
-      valueRating INTEGER,
-      comment TEXT,
-      photoUrl TEXT,
-      reporterName TEXT,
-      createdAt TEXT NOT NULL,
-      locationSource TEXT,
-      isFlagged INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY (menuItemId) REFERENCES MenuItem(id) ON DELETE CASCADE,
-      FOREIGN KEY (userId) REFERENCES User(id) ON DELETE SET NULL
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS StatusUpdate (
-      id TEXT PRIMARY KEY,
-      truckId TEXT NOT NULL,
-      userId TEXT,
-      status TEXT NOT NULL,
-      latitude REAL,
-      longitude REAL,
-      note TEXT,
-      reporterName TEXT,
-      reliability REAL,
-      photoUrl TEXT,
-      createdAt TEXT NOT NULL,
-      source TEXT NOT NULL DEFAULT 'CROWD',
-      isFlagged INTEGER NOT NULL DEFAULT 0,
-      FOREIGN KEY (truckId) REFERENCES FoodTruck(id) ON DELETE CASCADE,
-      FOREIGN KEY (userId) REFERENCES User(id) ON DELETE SET NULL
-    )
-  `);
-
-  db.run(`CREATE INDEX IF NOT EXISTS idx_status_truck ON StatusUpdate(truckId, createdAt DESC)`);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_review_item ON MenuReview(menuItemId, createdAt DESC)`);
-}
-
-async function seedDatabase(db: Database) {
-  // Check if already seeded
-  const result = db.exec("SELECT COUNT(*) as count FROM FoodTruck");
-  if (result.length > 0 && result[0].values.length > 0) {
-    const count = result[0].values[0][0];
-    if (typeof count === "number" && count > 0) {
-      return; // Already seeded
-    }
-  }
-
-  const now = new Date().toISOString();
-  const trucks = [
-    {
-      name: "Tacos Don Memo",
-      description: "Authentic Mexican tacos, burritos, and more. West side of 38th between Spruce & Locust, under Locust Walk bridge.",
-      cuisineType: "Mexican",
-      imageUrl: "https://images.unsplash.com/photo-1608039829574-358155f866f5?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "270 S 38th St, Philadelphia, PA 19104 (west side of 38th between Spruce & Locust, under Locust Walk bridge)",
-      defaultLatitude: 39.9534,
-      defaultLongitude: -75.1981,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Taco (asada / pollo / pastor / carnitas, single)", priceCents: 500 },
-        { name: "Burrito (choice of meat or veggie)", priceCents: 1350 },
-        { name: "Quesadilla", priceCents: 1350 },
-        { name: "Torta (Mexican sandwich)", priceCents: 1350 },
-        { name: "Birria Tacos (3)", priceCents: 1800, isFeatured: true },
-        { name: "Guacamole & Chips", priceCents: 1200 },
-      ],
-    },
-    {
-      name: "Tyson Bees",
-      description: "Korean BBQ and Thai fusion. Korean BBQ beef short rib tacos, Thai basil chicken, and more.",
-      cuisineType: "Korean",
-      imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "33rd St & Spruce St, Philadelphia, PA 19104 (near Franklin Field / Penn Museum side)",
-      defaultLatitude: 39.9524,
-      defaultLongitude: -75.1931,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Korean BBQ Beef Short Rib Tacos (per taco)", priceCents: 425 },
-        { name: "Thai Basil Chicken Tacos (per taco)", priceCents: 425 },
-        { name: "Korean BBQ Beef Short Rib & Kimchi Burrito", priceCents: 1000 },
-        { name: "BBQ Lemongrass Pork over Rice", priceCents: 950 },
-        { name: "Thai Basil Chicken over Rice", priceCents: 950 },
-        { name: "O.G. Dog (beef hot dog w/ short rib & kimchi)", priceCents: 700, isFeatured: true },
-        { name: "Kimchi Dog / Beef Dog", priceCents: 700 },
-      ],
-    },
-    {
-      name: "Hemo's",
-      description: "Breakfast sandwiches, shawarma, and cheesesteaks. South side of Spruce just below the 37th St entrance to the Quad.",
-      cuisineType: "Middle Eastern",
-      imageUrl: "https://images.unsplash.com/photo-1504753793650-d4a2b783c15c?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "37th & Spruce St, Philadelphia, PA 19104 (south side of Spruce just below the 37th St entrance to the Quad)",
-      defaultLatitude: 39.9524,
-      defaultLongitude: -75.1931,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Egg & Cheese Sandwich (roll)", priceCents: 450 },
-        { name: "Chicken Sausage, Egg & Cheese Sandwich", priceCents: 575 },
-        { name: "Grilled Chicken \"Hemo's Shawarma\" Sandwich", priceCents: 900, isFeatured: true },
-        { name: "Shawarma Combo (sandwich + fries / drink)", priceCents: 1300 },
-        { name: "Cheesesteak (standard)", priceCents: 950 },
-      ],
-    },
-    {
-      name: "Lyn's",
-      description: "Breakfast classics and campus-favorite cheesesteaks. South side of Spruce at 36th St, near CHOP / Lower Quad.",
-      cuisineType: "Breakfast",
-      imageUrl: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "3600 Spruce St, Philadelphia, PA 19104 (south side of Spruce at 36th St, near CHOP / Lower Quad)",
-      defaultLatitude: 39.9516,
-      defaultLongitude: -75.1949,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Bacon, Egg & Cheese (long roll)", priceCents: 600 },
-        { name: "Sausage, Egg & Cheese (long roll or potato bread)", priceCents: 600 },
-        { name: "Mixed Veggie, Egg & Cheese w/ avocado (+$0.50)", priceCents: 700 },
-        { name: "Cheesesteak Special", priceCents: 950, isFeatured: true },
-      ],
-    },
-    {
-      name: "Sopoong",
-      description: "Korean lunch plates including kimbap, bulgogi, and spicy pork. Near 298 S University Ave / 38th & Spruce area (by the Wawa).",
-      cuisineType: "Korean",
-      imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "Near 298 S University Ave / 38th & Spruce area (by the Wawa)",
-      defaultLatitude: 39.9520,
-      defaultLongitude: -75.1970,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Kimbap (Korean rolls, various fillings)", priceCents: 900 },
-        { name: "Bulgogi over Rice", priceCents: 900 },
-        { name: "Spicy Pork over Rice", priceCents: 900, isFeatured: true },
-        { name: "Other Korean lunch plates (e.g., chicken, tofu)", priceCents: 900 },
-      ],
-    },
-    {
-      name: "Kami",
-      description: "Korean bibimbap and noodles. In front of Drexel's Hagerty Library (short walk from Penn).",
-      cuisineType: "Korean",
-      imageUrl: "https://images.unsplash.com/photo-1515003197210-e0cd71810b5f?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "33rd & Market St, Philadelphia, PA 19104 (in front of Drexel's Hagerty Library)",
-      defaultLatitude: 39.9555,
-      defaultLongitude: -75.1910,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Bibimbap (various meats or veggie)", priceCents: 950 },
-        { name: "Bulgogi Beef w/ Udon Noodles", priceCents: 950 },
-        { name: "Spicy Pork Bibimbap", priceCents: 950, isFeatured: true },
-        { name: "Vegetable Bibimbap (meat-free)", priceCents: 850 },
-      ],
-    },
-    {
-      name: "Caribbean Feast",
-      description: "Jamaican and Caribbean cuisine. West side of 38th St between Spruce & Locust (same block as Don Memo).",
-      cuisineType: "Caribbean",
-      imageUrl: "https://images.unsplash.com/photo-1528832992873-5bb578167d94?auto=format&fit=crop&w=1200&q=80",
-      defaultLocation: "West side of 38th St between Spruce & Locust (same block as Don Memo)",
-      defaultLatitude: 39.9532,
-      defaultLongitude: -75.1980,
-      venmoHandle: null,
-      menuItems: [
-        { name: "Jerk Chicken Plate (with rice & peas + sides)", priceCents: 1300, isFeatured: true },
-        { name: "Curry Chicken Plate", priceCents: 1300 },
-        { name: "Jerk Chicken Sandwich / Wrap", priceCents: 1000 },
-        { name: "Beef or Chicken Patty", priceCents: 425 },
-      ],
-    },
-  ];
-
-  const truckIds: Record<string, string> = {};
-
-  for (const truck of trucks) {
-    const truckId = generateUUID();
-    truckIds[truck.name] = truckId;
-
-    db.run(
-      `INSERT INTO FoodTruck (id, name, description, cuisineType, imageUrl, venmoHandle, defaultLocation, defaultLatitude, defaultLongitude, typicalSchedule, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        truckId,
-        truck.name,
-        truck.description || null,
-        truck.cuisineType || null,
-        truck.imageUrl || null,
-        truck.venmoHandle || null,
-        truck.defaultLocation || null,
-        truck.defaultLatitude || null,
-        truck.defaultLongitude || null,
-        null,
-        now,
-        now,
-      ]
-    );
-
-    for (const item of truck.menuItems) {
-      const itemId = generateUUID();
-      db.run(
-        `INSERT INTO MenuItem (id, name, description, priceCents, imageUrl, truckId, isFeatured)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [
-          itemId,
-          item.name,
-          (item as any).description || null,
-          item.priceCents || null,
-          null,
-          truckId,
-          (item as any).isFeatured ? 1 : 0,
-        ]
-      );
-    }
-
-    const statusId = generateUUID();
-    db.run(
-      `INSERT INTO StatusUpdate (id, truckId, status, note, reporterName, latitude, longitude, reliability, source, createdAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        statusId,
-        truckId,
-        "OPEN",
-        "Serving lunch until 3pm",
-        "StreetEats Team",
-        truck.defaultLatitude || null,
-        truck.defaultLongitude || null,
-        0.9,
-        "ADMIN",
-        now,
-      ]
-    );
-  }
-
-  // Create one owner account for each truck
-  const ownerCredentials: Array<{ truckName: string; email: string; password: string }> = [
-    { truckName: "Tacos Don Memo", email: "tacosdonmemo@streeteats.test", password: "tacos1234" },
-    { truckName: "Tyson Bees", email: "tysonbees@streeteats.test", password: "tyson1234" },
-    { truckName: "Hemo's", email: "hemos@streeteats.test", password: "hemos1234" },
-    { truckName: "Lyn's", email: "lyns@streeteats.test", password: "lyns1234" },
-    { truckName: "Sopoong", email: "sopoong@streeteats.test", password: "sopoong1234" },
-    { truckName: "Kami", email: "kami@streeteats.test", password: "kami1234" },
-    { truckName: "Caribbean Feast", email: "caribbeanfeast@streeteats.test", password: "caribbean1234" },
-  ];
-
-  for (const cred of ownerCredentials) {
-    if (truckIds[cred.truckName]) {
-      const ownerId = generateUUID();
-      const passwordHash = await hashPassword(cred.password);
-      const ownerName = cred.truckName + " Owner";
-      
-      db.run(
-        `INSERT INTO Owner (id, name, email, passwordHash, createdAt)
-         VALUES (?, ?, ?, ?, ?)`,
-        [ownerId, ownerName, cred.email, passwordHash, now]
-      );
-
-      const accessId = generateUUID();
-      db.run(
-        `INSERT INTO OwnerTruckAccess (id, ownerId, truckId, role, createdAt)
-         VALUES (?, ?, ?, ?, ?)`,
-        [accessId, ownerId, truckIds[cred.truckName], "OWNER", now]
-      );
-    }
-  }
-}
-
-// API replacement functions
-export async function getDatabase(): Promise<Database> {
-  return await initDatabase();
-}
+// ---------- Shared interfaces ----------
 
 export interface FoodTruck {
   id: string;
@@ -488,101 +94,140 @@ export interface MenuReview {
   isFlagged?: boolean;
 }
 
+// ---------- Public API functions ----------
+
+// Fetch all trucks with latest status + menu items + average ratings
 export async function fetchTrucks(): Promise<FoodTruck[]> {
-  const database = await getDatabase();
-  const trucksResult = database.exec(`
-    SELECT id, name, description, cuisineType, imageUrl, venmoHandle, defaultLocation, 
-           defaultLatitude, defaultLongitude, typicalSchedule
-    FROM FoodTruck
-    ORDER BY name ASC
-  `);
+  // 1) Fetch trucks
+  const { data: trucksData, error: trucksError } = await supabase
+    .from("foodtruck")
+    .select(
+      "id, name, description, cuisinetype, imageurl, venmohandle, defaultlocation, defaultlatitude, defaultlongitude, typicalschedule"
+    )
+    .order("name", { ascending: true });
 
-  if (trucksResult.length === 0) return [];
-
-  const trucks: FoodTruck[] = [];
-  const rows = trucksResult[0].values;
-
-  for (const row of rows) {
-    const truckId = row[0] as string;
-    
-    // Get latest status (excluding flagged)
-    const statusResult = database.exec(`
-      SELECT id, status, note, reporterName, latitude, longitude, createdAt, source
-      FROM StatusUpdate
-      WHERE truckId = ? AND isFlagged = 0
-      ORDER BY createdAt DESC
-      LIMIT 1
-    `, [truckId]);
-
-    let latestStatus: StatusUpdate | null = null;
-    if (statusResult.length > 0 && statusResult[0].values.length > 0) {
-      const s = statusResult[0].values[0];
-      latestStatus = {
-        id: s[0] as string,
-        status: s[1] as any,
-        note: s[2] as string | null,
-        reporterName: s[3] as string | null,
-        latitude: s[4] as number | null,
-        longitude: s[5] as number | null,
-        createdAt: s[6] as string,
-        source: s[7] as string,
-      };
-    }
-
-    // Get menu items with average ratings (excluding flagged reviews)
-    const itemsResult = database.exec(`
-      SELECT m.id, m.name, m.description, m.priceCents, m.imageUrl, m.isFeatured,
-             AVG(CASE WHEN r.isFlagged = 0 THEN r.rating ELSE NULL END) as avgRating
-      FROM MenuItem m
-      LEFT JOIN MenuReview r ON m.id = r.menuItemId
-      WHERE m.truckId = ?
-      GROUP BY m.id
-    `, [truckId]);
-
-    const menuItems: MenuItem[] = [];
-    if (itemsResult.length > 0) {
-      for (const itemRow of itemsResult[0].values) {
-        menuItems.push({
-          id: itemRow[0] as string,
-          name: itemRow[1] as string,
-          description: itemRow[2] as string | null,
-          priceCents: itemRow[3] as number | null,
-          imageUrl: itemRow[4] as string | null,
-          isFeatured: (itemRow[5] as number) === 1,
-          averageRating: itemRow[6] ? Number(itemRow[6]) : null,
-        });
-      }
-    }
-
-    let typicalSchedule = null;
-    if (row[9]) {
-      try {
-        typicalSchedule = JSON.parse(row[9] as string);
-      } catch (e) {
-        // Ignore parse errors
-      }
-    }
-
-    trucks.push({
-      id: truckId,
-      name: row[1] as string,
-      description: row[2] as string | null,
-      cuisineType: row[3] as string | null,
-      imageUrl: row[4] as string | null,
-      venmoHandle: row[5] as string | null,
-      defaultLocation: row[6] as string | null,
-      defaultLatitude: row[7] as number | null,
-      defaultLongitude: row[8] as number | null,
-      typicalSchedule,
-      latestStatus,
-      menuItems,
-    });
+  if (trucksError) {
+    console.error(trucksError);
+    throw new Error("Failed to fetch food trucks");
   }
 
-  saveDatabase();
+  if (!trucksData || trucksData.length === 0) return [];
+
+  const truckIds = trucksData.map((t) => t.id as string);
+
+  // 2) Fetch status updates (latest non-flagged per truck)
+  const { data: statusesData, error: statusesError } = await supabase
+    .from("statusupdate")
+    .select(
+      "id, truckid, status, note, reportername, latitude, longitude, createdat, source, userid, isflagged"
+    )
+    .in("truckid", truckIds)
+    .order("createdat", { ascending: false });
+
+  if (statusesError) {
+    console.error(statusesError);
+    throw new Error("Failed to fetch status updates");
+  }
+
+  const latestStatusByTruck: Record<string, StatusUpdate | null> = {};
+  if (statusesData) {
+    for (const row of statusesData as any[]) {
+      const truckId = row.truckid as string;
+      if (latestStatusByTruck[truckId]) continue; // already have most recent
+      if (row.isflagged) continue;
+
+      latestStatusByTruck[truckId] = {
+        id: row.id,
+        status: row.status,
+        note: row.note,
+        reporterName: row.reportername,
+        latitude: row.latitude,
+        longitude: row.longitude,
+        createdAt: row.createdat,
+        source: row.source,
+        userId: row.userid ?? null,
+        isFlagged: row.isflagged ?? false,
+      };
+    }
+  }
+
+  // 3) Fetch menu items with reviews to compute avg ratings
+  const { data: menuData, error: menuError } = await supabase
+    .from("menuitem")
+    .select(
+      "id, name, description, pricecents, imageurl, isfeatured, truckid, menureview(rating, isflagged)"
+    )
+    .in("truckid", truckIds);
+
+  if (menuError) {
+    console.error(menuError);
+    throw new Error("Failed to fetch menu items");
+  }
+
+  const itemsByTruck: Record<string, MenuItem[]> = {};
+  if (menuData) {
+    for (const row of menuData as any[]) {
+      const reviews =
+        (row.menureview || []) as { rating: number; isflagged: boolean }[];
+
+      const validRatings = reviews
+        .filter((r) => !r.isflagged)
+        .map((r) => r.rating);
+      const avgRating =
+        validRatings.length > 0
+          ? validRatings.reduce((a, b) => a + b, 0) / validRatings.length
+          : null;
+
+      const item: MenuItem = {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        priceCents: row.pricecents,
+        imageUrl: row.imageurl,
+        isFeatured: row.isfeatured === true || row.isfeatured === 1,
+        averageRating: avgRating,
+      };
+
+      const truckId = row.truckid as string;
+      if (!itemsByTruck[truckId]) itemsByTruck[truckId] = [];
+      itemsByTruck[truckId].push(item);
+    }
+  }
+
+  // 4) Build FoodTruck objects
+  const trucks: FoodTruck[] = trucksData.map((t: any) => {
+    let typicalSchedule: any = null;
+    if (t.typicalschedule) {
+      try {
+        typicalSchedule =
+          typeof t.typicalschedule === "string"
+            ? JSON.parse(t.typicalschedule)
+            : t.typicalschedule;
+      } catch {
+        typicalSchedule = null;
+      }
+    }
+
+    return {
+      id: t.id,
+      name: t.name,
+      description: t.description,
+      cuisineType: t.cuisinetype,
+      imageUrl: t.imageurl,
+      venmoHandle: t.venmohandle,
+      defaultLocation: t.defaultlocation,
+      defaultLatitude: t.defaultlatitude,
+      defaultLongitude: t.defaultlongitude,
+      typicalSchedule,
+      latestStatus: latestStatusByTruck[t.id] || null,
+      menuItems: itemsByTruck[t.id] || [],
+    };
+  });
+
   return trucks;
 }
 
+// Post a status update (crowd-sourced)
 export async function postStatusUpdate(
   truckId: string,
   userId: string,
@@ -594,47 +239,50 @@ export async function postStatusUpdate(
     longitude?: number;
   }
 ): Promise<StatusUpdate> {
-  const database = await getDatabase();
-  
   // Check if user is banned
-  const userResult = database.exec(`SELECT isBanned FROM User WHERE id = ?`, [userId]);
-  if (userResult.length > 0 && userResult[0].values.length > 0) {
-    const isBanned = (userResult[0].values[0][0] as number) === 1;
-    if (isBanned) {
-      throw new Error("Your account has been banned. You cannot post updates.");
-    }
+  const { data: userRow, error: userError } = await supabase
+    .from("user")
+    .select("isbanned")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (userError) {
+    console.error(userError);
+    throw new Error("Failed to check user status");
+  }
+  if (userRow && userRow.isbanned) {
+    throw new Error("Your account has been banned. You cannot post updates.");
   }
 
   const id = generateUUID();
   const now = new Date().toISOString();
 
-  database.run(
-    `INSERT INTO StatusUpdate (id, truckId, userId, status, note, reporterName, latitude, longitude, source, createdAt, isFlagged)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      truckId,
-      userId,
-      payload.status,
-      payload.note || null,
-      payload.reporterName || null,
-      payload.latitude || null,
-      payload.longitude || null,
-      "CROWD",
-      now,
-      0,
-    ]
-  );
+  const { error: insertError } = await supabase.from("statusupdate").insert({
+    id,
+    truckid: truckId,
+    userid: userId,
+    status: payload.status,
+    note: payload.note ?? null,
+    reportername: payload.reporterName ?? null,
+    latitude: payload.latitude ?? null,
+    longitude: payload.longitude ?? null,
+    source: "CROWD",
+    createdat: now,
+    isflagged: false,
+  });
 
-  saveDatabase();
+  if (insertError) {
+    console.error(insertError);
+    throw new Error("Failed to post status update");
+  }
 
   return {
     id,
     status: payload.status,
-    note: payload.note || null,
-    reporterName: payload.reporterName || null,
-    latitude: payload.latitude || null,
-    longitude: payload.longitude || null,
+    note: payload.note ?? null,
+    reporterName: payload.reporterName ?? null,
+    latitude: payload.latitude ?? null,
+    longitude: payload.longitude ?? null,
     createdAt: now,
     source: "CROWD",
     userId,
@@ -642,6 +290,7 @@ export async function postStatusUpdate(
   };
 }
 
+// Post a menu review
 export async function postMenuReview(
   _truckId: string,
   userId: string,
@@ -652,70 +301,52 @@ export async function postMenuReview(
     reporterName?: string;
   }
 ): Promise<MenuReview> {
-  const database = await getDatabase();
-  
   // Check if user is banned
-  const userResult = database.exec(`SELECT isBanned FROM User WHERE id = ?`, [userId]);
-  if (userResult.length > 0 && userResult[0].values.length > 0) {
-    const isBanned = (userResult[0].values[0][0] as number) === 1;
-    if (isBanned) {
-      throw new Error("Your account has been banned. You cannot post reviews.");
-    }
+  const { data: userRow, error: userError } = await supabase
+    .from("user")
+    .select("isbanned")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (userError) {
+    console.error(userError);
+    throw new Error("Failed to check user status");
+  }
+  if (userRow && userRow.isbanned) {
+    throw new Error("Your account has been banned. You cannot post reviews.");
   }
 
   const id = generateUUID();
   const now = new Date().toISOString();
 
-  database.run(
-    `INSERT INTO MenuReview (id, menuItemId, userId, rating, comment, reporterName, createdAt, isFlagged)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, payload.menuItemId, userId, payload.rating, payload.comment || null, payload.reporterName || null, now, 0]
-  );
+  const { error: insertError } = await supabase.from("menureview").insert({
+    id,
+    menuitemid: payload.menuItemId,
+    userid: userId,
+    rating: payload.rating,
+    comment: payload.comment ?? null,
+    reportername: payload.reporterName ?? null,
+    createdat: now,
+    isflagged: false,
+  });
 
-  saveDatabase();
+  if (insertError) {
+    console.error(insertError);
+    throw new Error("Failed to post review");
+  }
 
   return {
     id,
     rating: payload.rating,
-    comment: payload.comment || null,
-    reporterName: payload.reporterName || null,
+    comment: payload.comment ?? null,
+    reporterName: payload.reporterName ?? null,
     createdAt: now,
     userId,
     isFlagged: false,
   };
 }
 
-export async function loginOwner(payload: { email: string; password: string }): Promise<{
-  token: string;
-  owner: { id: string; email: string; name?: string };
-}> {
-  const database = await getDatabase();
-  const result = database.exec(`SELECT id, name, email, passwordHash FROM Owner WHERE email = ?`, [payload.email]);
-
-  if (result.length === 0 || result[0].values.length === 0) {
-    throw new Error("Invalid credentials");
-  }
-
-  const row = result[0].values[0];
-  const passwordHash = row[3] as string;
-  const isValid = await verifyPassword(payload.password, passwordHash);
-
-  if (!isValid) {
-    throw new Error("Invalid credentials");
-  }
-
-  // Simple token (in production, use proper JWT)
-  const token = btoa(JSON.stringify({ id: row[0], email: row[2] }));
-
-  return {
-    token,
-    owner: {
-      id: row[0] as string,
-      email: row[2] as string,
-      name: row[1] as string,
-    },
-  };
-}
+// ---------- Owner login & profile ----------
 
 export interface OwnerTruckSummary {
   id: string;
@@ -735,9 +366,43 @@ export interface OwnerProfile {
   trucks: OwnerTruckSummary[];
 }
 
+export async function loginOwner(payload: {
+  email: string;
+  password: string;
+}): Promise<{
+  token: string;
+  owner: { id: string; email: string; name?: string };
+}> {
+  const { data, error } = await supabase
+    .from("owner")
+    .select("id, name, email, passwordhash")
+    .eq("email", payload.email)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to login");
+  }
+  if (!data) {
+    throw new Error("Invalid credentials");
+  }
+
+  const isValid = await verifyPassword(payload.password, data.passwordhash);
+  if (!isValid) throw new Error("Invalid credentials");
+
+  const token = btoa(JSON.stringify({ id: data.id, email: data.email }));
+
+  return {
+    token,
+    owner: {
+      id: data.id,
+      email: data.email,
+      name: data.name,
+    },
+  };
+}
+
 export async function fetchOwnerProfile(token: string): Promise<OwnerProfile> {
-  const database = await getDatabase();
-  
   let ownerId: string;
   try {
     const decoded = JSON.parse(atob(token));
@@ -746,52 +411,65 @@ export async function fetchOwnerProfile(token: string): Promise<OwnerProfile> {
     throw new Error("Invalid token");
   }
 
-  const ownerResult = database.exec(`SELECT id, name, email FROM Owner WHERE id = ?`, [ownerId]);
-  if (ownerResult.length === 0 || ownerResult[0].values.length === 0) {
-    throw new Error("Owner not found");
+  const { data: ownerRow, error: ownerError } = await supabase
+    .from("owner")
+    .select("id, name, email")
+    .eq("id", ownerId)
+    .maybeSingle();
+
+  if (ownerError) {
+    console.error(ownerError);
+    throw new Error("Failed to fetch owner");
+  }
+  if (!ownerRow) throw new Error("Owner not found");
+
+  const { data: accessRows, error: accessError } = await supabase
+    .from("ownertruckaccess")
+    .select(
+      "role, foodtruck:truckid(id, name, defaultlocation, cuisinetype, typicalschedule, defaultlatitude, defaultlongitude)"
+    )
+    .eq("ownerid", ownerId);
+
+  if (accessError) {
+    console.error(accessError);
+    throw new Error("Failed to fetch owner trucks");
   }
 
-  const ownerRow = ownerResult[0].values[0];
-  const accessResult = database.exec(`
-    SELECT t.id, t.name, t.defaultLocation, t.cuisineType, t.typicalSchedule, 
-           t.defaultLatitude, t.defaultLongitude, a.role
-    FROM OwnerTruckAccess a
-    JOIN FoodTruck t ON a.truckId = t.id
-    WHERE a.ownerId = ?
-  `, [ownerId]);
-
-  const trucks: OwnerTruckSummary[] = [];
-  if (accessResult.length > 0) {
-    for (const row of accessResult[0].values) {
+  const trucks: OwnerTruckSummary[] =
+    (accessRows || []).map((row: any) => {
       let typicalSchedule: any[] = [];
-      if (row[4]) {
+      if (row.foodtruck.typicalschedule) {
         try {
-          typicalSchedule = JSON.parse(row[4] as string);
-        } catch (e) {
-          // Ignore
+          typicalSchedule =
+            typeof row.foodtruck.typicalschedule === "string"
+              ? JSON.parse(row.foodtruck.typicalschedule)
+              : row.foodtruck.typicalschedule;
+        } catch {
+          typicalSchedule = [];
         }
       }
 
-      trucks.push({
-        id: row[0] as string,
-        name: row[1] as string,
-        defaultLocation: row[2] as string | null,
-        cuisineType: row[3] as string | null,
-        role: row[7] as "OWNER" | "MANAGER",
+      return {
+        id: row.foodtruck.id,
+        name: row.foodtruck.name,
+        defaultLocation: row.foodtruck.defaultlocation,
+        cuisineType: row.foodtruck.cuisinetype,
+        role: row.role as "OWNER" | "MANAGER",
         typicalSchedule,
-        defaultLatitude: row[5] as number | null,
-        defaultLongitude: row[6] as number | null,
-      });
-    }
-  }
+        defaultLatitude: row.foodtruck.defaultlatitude,
+        defaultLongitude: row.foodtruck.defaultlongitude,
+      };
+    }) ?? [];
 
   return {
-    id: ownerRow[0] as string,
-    name: ownerRow[1] as string,
-    email: ownerRow[2] as string,
+    id: ownerRow.id,
+    name: ownerRow.name,
+    email: ownerRow.email,
     trucks,
   };
 }
+
+// ---------- Truck updates (owner) ----------
 
 export interface ScheduleEntry {
   day: string;
@@ -803,16 +481,20 @@ export async function updateTruckHours(
   truckId: string,
   schedule: ScheduleEntry[]
 ): Promise<{ truckId: string; typicalSchedule: ScheduleEntry[] }> {
-  const database = await getDatabase();
   const scheduleJson = JSON.stringify(schedule);
 
-  database.run(`UPDATE FoodTruck SET typicalSchedule = ?, updatedAt = ? WHERE id = ?`, [
-    scheduleJson,
-    new Date().toISOString(),
-    truckId,
-  ]);
+  const { error } = await supabase
+    .from("foodtruck")
+    .update({
+      typicalschedule: scheduleJson,
+      updatedat: new Date().toISOString(),
+    })
+    .eq("id", truckId);
 
-  saveDatabase();
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to update truck hours");
+  }
 
   return {
     truckId,
@@ -824,15 +506,18 @@ export async function updateTruckDescription(
   truckId: string,
   description: string
 ): Promise<{ truckId: string; description: string }> {
-  const database = await getDatabase();
+  const { error } = await supabase
+    .from("foodtruck")
+    .update({
+      description,
+      updatedat: new Date().toISOString(),
+    })
+    .eq("id", truckId);
 
-  database.run(`UPDATE FoodTruck SET description = ?, updatedAt = ? WHERE id = ?`, [
-    description,
-    new Date().toISOString(),
-    truckId,
-  ]);
-
-  saveDatabase();
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to update truck description");
+  }
 
   return {
     truckId,
@@ -841,66 +526,78 @@ export async function updateTruckDescription(
 }
 
 export async function fetchTruckForOwner(truckId: string): Promise<FoodTruck> {
-  const database = await getDatabase();
-  const truckResult = database.exec(`
-    SELECT id, name, description, cuisineType, imageUrl, venmoHandle, defaultLocation, 
-           defaultLatitude, defaultLongitude, typicalSchedule
-    FROM FoodTruck
-    WHERE id = ?
-  `, [truckId]);
+  const { data: truck, error: truckError } = await supabase
+    .from("foodtruck")
+    .select(
+      "id, name, description, cuisinetype, imageurl, venmohandle, defaultlocation, defaultlatitude, defaultlongitude, typicalschedule"
+    )
+    .eq("id", truckId)
+    .maybeSingle();
 
-  if (truckResult.length === 0 || truckResult[0].values.length === 0) {
+  if (truckError) {
+    console.error(truckError);
+    throw new Error("Failed to fetch truck");
+  }
+  if (!truck) {
     throw new Error("Truck not found");
   }
 
-  const row = truckResult[0].values[0];
-  const truckIdFromDb = row[0] as string;
+  const { data: items, error: itemsError } = await supabase
+    .from("menuitem")
+    .select(
+      "id, name, description, pricecents, imageurl, isfeatured, menureview(rating)"
+    )
+    .eq("truckid", truck.id)
+    .order("isfeatured", { ascending: false })
+    .order("name", { ascending: true });
 
-  // Get menu items
-  const itemsResult = database.exec(`
-    SELECT m.id, m.name, m.description, m.priceCents, m.imageUrl, m.isFeatured,
-           AVG(r.rating) as avgRating
-    FROM MenuItem m
-    LEFT JOIN MenuReview r ON m.id = r.menuItemId
-    WHERE m.truckId = ?
-    GROUP BY m.id
-    ORDER BY m.isFeatured DESC, m.name ASC
-  `, [truckIdFromDb]);
-
-  const menuItems: MenuItem[] = [];
-  if (itemsResult.length > 0) {
-    for (const itemRow of itemsResult[0].values) {
-      menuItems.push({
-        id: itemRow[0] as string,
-        name: itemRow[1] as string,
-        description: itemRow[2] as string | null,
-        priceCents: itemRow[3] as number | null,
-        imageUrl: itemRow[4] as string | null,
-        isFeatured: (itemRow[5] as number) === 1,
-        averageRating: itemRow[6] ? Number(itemRow[6]) : null,
-      });
-    }
+  if (itemsError) {
+    console.error(itemsError);
+    throw new Error("Failed to fetch menu items");
   }
 
-  let typicalSchedule = null;
-  if (row[9]) {
+  const menuItems: MenuItem[] =
+    (items || []).map((row: any) => {
+      const reviews = (row.menureview || []) as { rating: number }[];
+      const ratings = reviews.map((r) => r.rating);
+      const avgRating =
+        ratings.length > 0
+          ? ratings.reduce((a, b) => a + b, 0) / ratings.length
+          : null;
+
+      return {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        priceCents: row.pricecents,
+        imageUrl: row.imageurl,
+        isFeatured: row.isfeatured === true || row.isfeatured === 1,
+        averageRating: avgRating,
+      };
+    }) ?? [];
+
+  let typicalSchedule: any = null;
+  if (truck.typicalschedule) {
     try {
-      typicalSchedule = JSON.parse(row[9] as string);
-    } catch (e) {
-      // Ignore parse errors
+      typicalSchedule =
+        typeof truck.typicalschedule === "string"
+          ? JSON.parse(truck.typicalschedule)
+          : truck.typicalschedule;
+    } catch {
+      typicalSchedule = null;
     }
   }
 
   return {
-    id: truckIdFromDb,
-    name: row[1] as string,
-    description: row[2] as string | null,
-    cuisineType: row[3] as string | null,
-    imageUrl: row[4] as string | null,
-    venmoHandle: row[5] as string | null,
-    defaultLocation: row[6] as string | null,
-    defaultLatitude: row[7] as number | null,
-    defaultLongitude: row[8] as number | null,
+    id: truck.id,
+    name: truck.name,
+    description: truck.description,
+    cuisineType: truck.cuisinetype,
+    imageUrl: truck.imageurl,
+    venmoHandle: truck.venmohandle,
+    defaultLocation: truck.defaultlocation,
+    defaultLatitude: truck.defaultlatitude,
+    defaultLongitude: truck.defaultlongitude,
     typicalSchedule,
     latestStatus: null,
     menuItems,
@@ -916,30 +613,28 @@ export async function createMenuItem(
     isFeatured?: boolean;
   }
 ): Promise<MenuItem> {
-  const database = await getDatabase();
   const id = generateUUID();
 
-  database.run(
-    `INSERT INTO MenuItem (id, name, description, priceCents, imageUrl, truckId, isFeatured)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      payload.name,
-      payload.description || null,
-      payload.priceCents || null,
-      null,
-      truckId,
-      payload.isFeatured ? 1 : 0,
-    ]
-  );
+  const { error } = await supabase.from("menuitem").insert({
+    id,
+    name: payload.name,
+    description: payload.description ?? null,
+    pricecents: payload.priceCents ?? null,
+    imageurl: null,
+    truckid: truckId,
+    isfeatured: payload.isFeatured ? 1 : 0,
+  });
 
-  saveDatabase();
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to create menu item");
+  }
 
   return {
     id,
     name: payload.name,
-    description: payload.description || null,
-    priceCents: payload.priceCents || null,
+    description: payload.description ?? null,
+    priceCents: payload.priceCents ?? null,
     imageUrl: null,
     averageRating: null,
     isFeatured: payload.isFeatured || false,
@@ -955,30 +650,48 @@ export async function updateMenuItem(
     isFeatured?: boolean;
   }
 ): Promise<MenuItem> {
-  const database = await getDatabase();
+  const { data: current, error: currentError } = await supabase
+    .from("menuitem")
+    .select("name, description, pricecents, isfeatured")
+    .eq("id", menuItemId)
+    .maybeSingle();
 
-  // Get current item to merge updates
-  const currentResult = database.exec(
-    `SELECT name, description, priceCents, isFeatured FROM MenuItem WHERE id = ?`,
-    [menuItemId]
-  );
-
-  if (currentResult.length === 0 || currentResult[0].values.length === 0) {
+  if (currentError) {
+    console.error(currentError);
+    throw new Error("Failed to fetch menu item");
+  }
+  if (!current) {
     throw new Error("Menu item not found");
   }
 
-  const current = currentResult[0].values[0];
-  const name = payload.name ?? (current[0] as string);
-  const description = payload.description !== undefined ? payload.description : (current[1] as string | null);
-  const priceCents = payload.priceCents !== undefined ? payload.priceCents : (current[2] as number | null);
-  const isFeatured = payload.isFeatured !== undefined ? payload.isFeatured : ((current[3] as number) === 1);
+  const name = payload.name ?? (current.name as string);
+  const description =
+    payload.description !== undefined
+      ? payload.description
+      : (current.description as string | null);
+  const priceCents =
+    payload.priceCents !== undefined
+      ? payload.priceCents
+      : (current.pricecents as number | null);
+  const isFeatured =
+    payload.isFeatured !== undefined
+      ? payload.isFeatured
+      : current.isfeatured === 1 || current.isfeatured === true;
 
-  database.run(
-    `UPDATE MenuItem SET name = ?, description = ?, priceCents = ?, isFeatured = ? WHERE id = ?`,
-    [name, description, priceCents, isFeatured ? 1 : 0, menuItemId]
-  );
+  const { error: updateError } = await supabase
+    .from("menuitem")
+    .update({
+      name,
+      description,
+      pricecents: priceCents,
+      isfeatured: isFeatured ? 1 : 0,
+    })
+    .eq("id", menuItemId);
 
-  saveDatabase();
+  if (updateError) {
+    console.error(updateError);
+    throw new Error("Failed to update menu item");
+  }
 
   return {
     id: menuItemId,
@@ -992,12 +705,19 @@ export async function updateMenuItem(
 }
 
 export async function deleteMenuItem(menuItemId: string): Promise<void> {
-  const database = await getDatabase();
-  database.run(`DELETE FROM MenuItem WHERE id = ?`, [menuItemId]);
-  saveDatabase();
+  const { error } = await supabase
+    .from("menuitem")
+    .delete()
+    .eq("id", menuItemId);
+
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to delete menu item");
+  }
 }
 
-// User registration and login
+// ---------- User registration & login ----------
+
 export interface User {
   id: string;
   username: string;
@@ -1007,27 +727,38 @@ export interface User {
   isBanned: boolean;
 }
 
-export async function registerUser(payload: { username: string; email: string; phoneNumber: string; password: string }): Promise<{
+export async function registerUser(payload: {
+  username: string;
+  email: string;
+  phoneNumber: string;
+  password: string;
+}): Promise<{
   token: string;
   user: User;
 }> {
-  const database = await getDatabase();
-  
-  // Check if username already exists
-  const existingUsername = database.exec(`SELECT id FROM User WHERE username = ?`, [payload.username]);
-  if (existingUsername.length > 0 && existingUsername[0].values.length > 0) {
+  // Check unique constraints manually (or rely on DB unique + catch error)
+  const [
+    { data: existingUsername, error: userNameError },
+    { data: existingEmail, error: emailError },
+    { data: existingPhone, error: phoneError },
+  ] = await Promise.all([
+    supabase.from("user").select("id").eq("username", payload.username),
+    supabase.from("user").select("id").eq("email", payload.email),
+    supabase.from("user").select("id").eq("phonenumber", payload.phoneNumber),
+  ]);
+
+  if (userNameError || emailError || phoneError) {
+    console.error(userNameError || emailError || phoneError);
+    throw new Error("Failed to check user uniqueness");
+  }
+
+  if (existingUsername && existingUsername.length > 0) {
     throw new Error("Username already taken");
   }
-
-  // Check if email already exists
-  const existingEmail = database.exec(`SELECT id FROM User WHERE email = ?`, [payload.email]);
-  if (existingEmail.length > 0 && existingEmail[0].values.length > 0) {
+  if (existingEmail && existingEmail.length > 0) {
     throw new Error("Email already registered");
   }
-
-  // Check if phone number already exists
-  const existingPhone = database.exec(`SELECT id FROM User WHERE phoneNumber = ?`, [payload.phoneNumber]);
-  if (existingPhone.length > 0 && existingPhone[0].values.length > 0) {
+  if (existingPhone && existingPhone.length > 0) {
     throw new Error("Phone number already registered");
   }
 
@@ -1035,13 +766,21 @@ export async function registerUser(payload: { username: string; email: string; p
   const passwordHash = await hashPassword(payload.password);
   const now = new Date().toISOString();
 
-  database.run(
-    `INSERT INTO User (id, username, email, phoneNumber, passwordHash, strikeCount, isBanned, createdAt)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, payload.username, payload.email, payload.phoneNumber, passwordHash, 0, 0, now]
-  );
+  const { error: insertError } = await supabase.from("user").insert({
+    id,
+    username: payload.username,
+    email: payload.email,
+    phonenumber: payload.phoneNumber,
+    passwordhash: passwordHash,
+    strikecount: 0,
+    isbanned: 0,
+    createdat: now,
+  });
 
-  saveDatabase();
+  if (insertError) {
+    console.error(insertError);
+    throw new Error("Failed to register user");
+  }
 
   const token = btoa(JSON.stringify({ id, username: payload.username }));
 
@@ -1058,53 +797,56 @@ export async function registerUser(payload: { username: string; email: string; p
   };
 }
 
-export async function loginUser(payload: { emailOrPhone: string; password: string }): Promise<{
+export async function loginUser(payload: {
+  emailOrPhone: string;
+  password: string;
+}): Promise<{
   token: string;
   user: User;
 }> {
-  const database = await getDatabase();
-  
-  // Try to find user by email or phone number
-  const result = database.exec(
-    `SELECT id, username, email, phoneNumber, passwordHash, strikeCount, isBanned FROM User WHERE email = ? OR phoneNumber = ?`,
-    [payload.emailOrPhone, payload.emailOrPhone]
-  );
+  const { data, error } = await supabase
+    .from("user")
+    .select(
+      "id, username, email, phonenumber, passwordhash, strikecount, isbanned"
+    )
+    .or(
+      `email.eq.${payload.emailOrPhone},phonenumber.eq.${payload.emailOrPhone}`
+    )
+    .maybeSingle();
 
-  if (result.length === 0 || result[0].values.length === 0) {
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to login");
+  }
+  if (!data) {
     throw new Error("Invalid credentials");
   }
 
-  const row = result[0].values[0];
-  const passwordHash = row[4] as string;
-  const isValid = await verifyPassword(payload.password, passwordHash);
-
+  const isValid = await verifyPassword(payload.password, data.passwordhash);
   if (!isValid) {
     throw new Error("Invalid credentials");
   }
 
-  const isBanned = (row[6] as number) === 1;
-  if (isBanned) {
+  if (data.isbanned) {
     throw new Error("Your account has been banned");
   }
 
-  const token = btoa(JSON.stringify({ id: row[0], username: row[1] }));
+  const token = btoa(JSON.stringify({ id: data.id, username: data.username }));
 
   return {
     token,
     user: {
-      id: row[0] as string,
-      username: row[1] as string,
-      email: row[2] as string,
-      phoneNumber: row[3] as string,
-      strikeCount: row[5] as number,
-      isBanned: false,
+      id: data.id,
+      username: data.username,
+      email: data.email,
+      phoneNumber: data.phonenumber,
+      strikeCount: data.strikecount,
+      isBanned: !!data.isbanned,
     },
   };
 }
 
 export async function fetchUserProfile(token: string): Promise<User> {
-  const database = await getDatabase();
-  
   let userId: string;
   try {
     const decoded = JSON.parse(atob(token));
@@ -1113,27 +855,36 @@ export async function fetchUserProfile(token: string): Promise<User> {
     throw new Error("Invalid token");
   }
 
-  const result = database.exec(`SELECT id, username, email, phoneNumber, strikeCount, isBanned FROM User WHERE id = ?`, [userId]);
-  if (result.length === 0 || result[0].values.length === 0) {
+  const { data, error } = await supabase
+    .from("user")
+    .select("id, username, email, phonenumber, strikecount, isbanned")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to fetch user profile");
+  }
+  if (!data) {
     throw new Error("User not found");
   }
 
-  const row = result[0].values[0];
   return {
-    id: row[0] as string,
-    username: row[1] as string,
-    email: row[2] as string,
-    phoneNumber: row[3] as string,
-    strikeCount: row[4] as number,
-    isBanned: (row[5] as number) === 1,
+    id: data.id,
+    username: data.username,
+    email: data.email,
+    phoneNumber: data.phonenumber,
+    strikeCount: data.strikecount,
+    isBanned: !!data.isbanned,
   };
 }
 
-// Flagging functions for owners
-export async function flagStatusUpdate(statusUpdateId: string, ownerToken: string): Promise<void> {
-  const database = await getDatabase();
-  
-  // Verify owner token
+// ---------- Flagging & moderation (owners) ----------
+
+export async function flagStatusUpdate(
+  statusUpdateId: string,
+  ownerToken: string
+): Promise<void> {
   let ownerId: string;
   try {
     const decoded = JSON.parse(atob(ownerToken));
@@ -1143,26 +894,35 @@ export async function flagStatusUpdate(statusUpdateId: string, ownerToken: strin
   }
 
   // Get the status update and its truck
-  const statusResult = database.exec(`
-    SELECT s.userId, s.truckId
-    FROM StatusUpdate s
-    WHERE s.id = ?
-  `, [statusUpdateId]);
+  const { data: statusRow, error: statusError } = await supabase
+    .from("statusupdate")
+    .select("userid, truckid")
+    .eq("id", statusUpdateId)
+    .maybeSingle();
 
-  if (statusResult.length === 0 || statusResult[0].values.length === 0) {
+  if (statusError) {
+    console.error(statusError);
+    throw new Error("Failed to fetch status update");
+  }
+  if (!statusRow) {
     throw new Error("Status update not found");
   }
 
-  const userId = statusResult[0].values[0][0] as string | null;
-  const truckId = statusResult[0].values[0][1] as string;
+  const userId = statusRow.userid as string | null;
+  const truckId = statusRow.truckid as string;
 
   // Verify owner has access to this truck
-  const accessResult = database.exec(`
-    SELECT id FROM OwnerTruckAccess
-    WHERE ownerId = ? AND truckId = ?
-  `, [ownerId, truckId]);
+  const { data: access, error: accessError } = await supabase
+    .from("ownertruckaccess")
+    .select("id")
+    .eq("ownerid", ownerId)
+    .eq("truckid", truckId);
 
-  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+  if (accessError) {
+    console.error(accessError);
+    throw new Error("Failed to verify permissions");
+  }
+  if (!access || access.length === 0) {
     throw new Error("You don't have permission to flag updates for this truck");
   }
 
@@ -1171,28 +931,50 @@ export async function flagStatusUpdate(statusUpdateId: string, ownerToken: strin
   }
 
   // Flag the status update
-  database.run(`UPDATE StatusUpdate SET isFlagged = 1 WHERE id = ?`, [statusUpdateId]);
+  const { error: updateStatusError } = await supabase
+    .from("statusupdate")
+    .update({ isflagged: true })
+    .eq("id", statusUpdateId);
 
-  // Increment user strike count
-  const userResult = database.exec(`SELECT strikeCount FROM User WHERE id = ?`, [userId]);
-  if (userResult.length > 0 && userResult[0].values.length > 0) {
-    const currentStrikes = userResult[0].values[0][0] as number;
-    const newStrikes = currentStrikes + 1;
-    
-    database.run(`UPDATE User SET strikeCount = ?, isBanned = ? WHERE id = ?`, [
-      newStrikes,
-      newStrikes >= 3 ? 1 : 0,
-      userId,
-    ]);
+  if (updateStatusError) {
+    console.error(updateStatusError);
+    throw new Error("Failed to flag status update");
   }
 
-  saveDatabase();
+  // Increment user strike count & possibly ban
+  const { data: userRow, error: userError } = await supabase
+    .from("user")
+    .select("strikecount")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (userError) {
+    console.error(userError);
+    throw new Error("Failed to fetch user for strike update");
+  }
+
+  if (userRow) {
+    const currentStrikes = userRow.strikecount as number;
+    const newStrikes = currentStrikes + 1;
+    const { error: updateUserError } = await supabase
+      .from("user")
+      .update({
+        strikecount: newStrikes,
+        isbanned: newStrikes >= 3 ? 1 : 0,
+      })
+      .eq("id", userId);
+
+    if (updateUserError) {
+      console.error(updateUserError);
+      throw new Error("Failed to update user strike count");
+    }
+  }
 }
 
-export async function flagMenuReview(reviewId: string, ownerToken: string): Promise<void> {
-  const database = await getDatabase();
-  
-  // Verify owner token
+export async function flagMenuReview(
+  reviewId: string,
+  ownerToken: string
+): Promise<void> {
   let ownerId: string;
   try {
     const decoded = JSON.parse(atob(ownerToken));
@@ -1202,27 +984,51 @@ export async function flagMenuReview(reviewId: string, ownerToken: string): Prom
   }
 
   // Get the review and its menu item's truck
-  const reviewResult = database.exec(`
-    SELECT r.userId, m.truckId
-    FROM MenuReview r
-    JOIN MenuItem m ON r.menuItemId = m.id
-    WHERE r.id = ?
-  `, [reviewId]);
+  const { data: reviewRow, error: reviewError } = await supabase
+    .from("menureview")
+    .select("userid, menuitemid")
+    .eq("id", reviewId)
+    .maybeSingle();
 
-  if (reviewResult.length === 0 || reviewResult[0].values.length === 0) {
+  if (reviewError) {
+    console.error(reviewError);
+    throw new Error("Failed to fetch review");
+  }
+  if (!reviewRow) {
     throw new Error("Review not found");
   }
 
-  const userId = reviewResult[0].values[0][0] as string | null;
-  const truckId = reviewResult[0].values[0][1] as string;
+  const userId = reviewRow.userid as string | null;
+  const menuItemId = reviewRow.menuitemid as string;
+
+  const { data: menuItemRow, error: menuItemError } = await supabase
+    .from("menuitem")
+    .select("truckid")
+    .eq("id", menuItemId)
+    .maybeSingle();
+
+  if (menuItemError) {
+    console.error(menuItemError);
+    throw new Error("Failed to fetch menu item for review");
+  }
+  if (!menuItemRow) {
+    throw new Error("Menu item for review not found");
+  }
+
+  const truckId = menuItemRow.truckid as string;
 
   // Verify owner has access to this truck
-  const accessResult = database.exec(`
-    SELECT id FROM OwnerTruckAccess
-    WHERE ownerId = ? AND truckId = ?
-  `, [ownerId, truckId]);
+  const { data: access, error: accessError } = await supabase
+    .from("ownertruckaccess")
+    .select("id")
+    .eq("ownerid", ownerId)
+    .eq("truckid", truckId);
 
-  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+  if (accessError) {
+    console.error(accessError);
+    throw new Error("Failed to verify permissions");
+  }
+  if (!access || access.length === 0) {
     throw new Error("You don't have permission to flag reviews for this truck");
   }
 
@@ -1231,29 +1037,51 @@ export async function flagMenuReview(reviewId: string, ownerToken: string): Prom
   }
 
   // Flag the review
-  database.run(`UPDATE MenuReview SET isFlagged = 1 WHERE id = ?`, [reviewId]);
+  const { error: updateReviewError } = await supabase
+    .from("menureview")
+    .update({ isflagged: true })
+    .eq("id", reviewId);
 
-  // Increment user strike count
-  const userResult = database.exec(`SELECT strikeCount FROM User WHERE id = ?`, [userId]);
-  if (userResult.length > 0 && userResult[0].values.length > 0) {
-    const currentStrikes = userResult[0].values[0][0] as number;
-    const newStrikes = currentStrikes + 1;
-    
-    database.run(`UPDATE User SET strikeCount = ?, isBanned = ? WHERE id = ?`, [
-      newStrikes,
-      newStrikes >= 3 ? 1 : 0,
-      userId,
-    ]);
+  if (updateReviewError) {
+    console.error(updateReviewError);
+    throw new Error("Failed to flag review");
   }
 
-  saveDatabase();
+  // Increment user strike count & possibly ban
+  const { data: userRow, error: userError } = await supabase
+    .from("user")
+    .select("strikecount")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (userError) {
+    console.error(userError);
+    throw new Error("Failed to fetch user for strike update");
+  }
+
+  if (userRow) {
+    const currentStrikes = userRow.strikecount as number;
+    const newStrikes = currentStrikes + 1;
+    const { error: updateUserError } = await supabase
+      .from("user")
+      .update({
+        strikecount: newStrikes,
+        isbanned: newStrikes >= 3 ? 1 : 0,
+      })
+      .eq("id", userId);
+
+    if (updateUserError) {
+      console.error(updateUserError);
+      throw new Error("Failed to update user strike count");
+    }
+  }
 }
 
-// Get status updates and reviews for a truck (for owners to see and flag)
-export async function fetchTruckStatusUpdates(truckId: string, ownerToken: string): Promise<StatusUpdate[]> {
-  const database = await getDatabase();
-  
-  // Verify owner token
+// Get status updates for a truck (for owners to view & flag)
+export async function fetchTruckStatusUpdates(
+  truckId: string,
+  ownerToken: string
+): Promise<StatusUpdate[]> {
   let ownerId: string;
   try {
     const decoded = JSON.parse(atob(ownerToken));
@@ -1263,47 +1091,55 @@ export async function fetchTruckStatusUpdates(truckId: string, ownerToken: strin
   }
 
   // Verify owner has access
-  const accessResult = database.exec(`
-    SELECT id FROM OwnerTruckAccess
-    WHERE ownerId = ? AND truckId = ?
-  `, [ownerId, truckId]);
+  const { data: access, error: accessError } = await supabase
+    .from("ownertruckaccess")
+    .select("id")
+    .eq("ownerid", ownerId)
+    .eq("truckid", truckId);
 
-  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+  if (accessError) {
+    console.error(accessError);
+    throw new Error("Failed to verify permissions");
+  }
+  if (!access || access.length === 0) {
     throw new Error("You don't have permission to view updates for this truck");
   }
 
-  const result = database.exec(`
-    SELECT id, status, note, reporterName, latitude, longitude, createdAt, source, userId, isFlagged
-    FROM StatusUpdate
-    WHERE truckId = ?
-    ORDER BY createdAt DESC
-  `, [truckId]);
+  const { data, error } = await supabase
+    .from("statusupdate")
+    .select(
+      "id, status, note, reportername, latitude, longitude, createdat, source, userid, isflagged"
+    )
+    .eq("truckid", truckId)
+    .order("createdat", { ascending: false });
 
-  const updates: StatusUpdate[] = [];
-  if (result.length > 0) {
-    for (const row of result[0].values) {
-      updates.push({
-        id: row[0] as string,
-        status: row[1] as any,
-        note: row[2] as string | null,
-        reporterName: row[3] as string | null,
-        latitude: row[4] as number | null,
-        longitude: row[5] as number | null,
-        createdAt: row[6] as string,
-        source: row[7] as string,
-        userId: row[8] as string | null,
-        isFlagged: (row[9] as number) === 1,
-      });
-    }
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to fetch status updates");
   }
+
+  const updates: StatusUpdate[] =
+    (data || []).map((row: any) => ({
+      id: row.id,
+      status: row.status,
+      note: row.note,
+      reporterName: row.reportername,
+      latitude: row.latitude,
+      longitude: row.longitude,
+      createdAt: row.createdat,
+      source: row.source,
+      userId: row.userid ?? null,
+      isFlagged: row.isflagged === 1 || row.isflagged === true,
+    })) ?? [];
 
   return updates;
 }
 
-export async function fetchTruckMenuReviews(truckId: string, ownerToken: string): Promise<MenuReview[]> {
-  const database = await getDatabase();
-  
-  // Verify owner token
+// Get menu reviews for a truck (for owners to view & flag)
+export async function fetchTruckMenuReviews(
+  truckId: string,
+  ownerToken: string
+): Promise<MenuReview[]> {
   let ownerId: string;
   try {
     const decoded = JSON.parse(atob(ownerToken));
@@ -1313,38 +1149,55 @@ export async function fetchTruckMenuReviews(truckId: string, ownerToken: string)
   }
 
   // Verify owner has access
-  const accessResult = database.exec(`
-    SELECT id FROM OwnerTruckAccess
-    WHERE ownerId = ? AND truckId = ?
-  `, [ownerId, truckId]);
+  const { data: access, error: accessError } = await supabase
+    .from("ownertruckaccess")
+    .select("id")
+    .eq("ownerid", ownerId)
+    .eq("truckid", truckId);
 
-  if (accessResult.length === 0 || accessResult[0].values.length === 0) {
+  if (accessError) {
+    console.error(accessError);
+    throw new Error("Failed to verify permissions");
+  }
+  if (!access || access.length === 0) {
     throw new Error("You don't have permission to view reviews for this truck");
   }
 
-  const result = database.exec(`
-    SELECT r.id, r.rating, r.comment, r.reporterName, r.createdAt, r.userId, r.isFlagged
-    FROM MenuReview r
-    JOIN MenuItem m ON r.menuItemId = m.id
-    WHERE m.truckId = ?
-    ORDER BY r.createdAt DESC
-  `, [truckId]);
+  // Get menu item IDs for this truck
+  const { data: menuItems, error: menuError } = await supabase
+    .from("menuitem")
+    .select("id")
+    .eq("truckid", truckId);
 
-  const reviews: MenuReview[] = [];
-  if (result.length > 0) {
-    for (const row of result[0].values) {
-      reviews.push({
-        id: row[0] as string,
-        rating: row[1] as number,
-        comment: row[2] as string | null,
-        reporterName: row[3] as string | null,
-        createdAt: row[4] as string,
-        userId: row[5] as string | null,
-        isFlagged: (row[6] as number) === 1,
-      });
-    }
+  if (menuError) {
+    console.error(menuError);
+    throw new Error("Failed to fetch menu items for truck");
   }
+
+  const menuItemIds = (menuItems || []).map((m: any) => m.id as string);
+  if (menuItemIds.length === 0) return [];
+
+  const { data, error } = await supabase
+    .from("menureview")
+    .select("id, rating, comment, reportername, createdat, userid, isflagged")
+    .in("menuitemid", menuItemIds)
+    .order("createdat", { ascending: false });
+
+  if (error) {
+    console.error(error);
+    throw new Error("Failed to fetch reviews");
+  }
+
+  const reviews: MenuReview[] =
+    (data || []).map((row: any) => ({
+      id: row.id,
+      rating: row.rating,
+      comment: row.comment,
+      reporterName: row.reportername,
+      createdAt: row.createdat,
+      userId: row.userid ?? null,
+      isFlagged: row.isflagged === 1 || row.isflagged === true,
+    })) ?? [];
 
   return reviews;
 }
-
