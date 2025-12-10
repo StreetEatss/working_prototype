@@ -1,6 +1,7 @@
 import { HashRouter, Route, Routes } from "react-router-dom";
 import HomePage from "./pages/Home";
 import OwnerPortalPage from "./pages/OwnerPortal";
+import TruckDetailPage from "./pages/TruckDetailPage";
 import "./App.css";
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/owners" element={<OwnerPortalPage />} />
+        <Route path="/trucks/:truckId" element={<TruckDetailPage />} />
       </Routes>
     </HashRouter>
   );
