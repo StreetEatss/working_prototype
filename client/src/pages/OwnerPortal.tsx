@@ -18,6 +18,7 @@ import {
   flagStatusUpdate,
   flagMenuReview,
 } from "../lib/api";
+import { supabase } from "../lib/supabaseClient";
 
 const ownerDays: ScheduleEntry["day"][] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -108,6 +109,7 @@ export default function OwnerPortalPage() {
     setShowAddMenuItem(false);
     queryClient.removeQueries({ queryKey: ["owner-profile"] });
     queryClient.removeQueries({ queryKey: ["truck-for-owner"] });
+    supabase.auth.signOut();
   }, [queryClient]);
 
   useEffect(() => {
@@ -147,6 +149,33 @@ export default function OwnerPortalPage() {
       return () => clearTimeout(timeout);
     }
   }, [feedback]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("owner-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "FoodTruck" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["owner-profile"] });
+        queryClient.invalidateQueries({ queryKey: ["truck-for-owner"] });
+        queryClient.invalidateQueries({ queryKey: ["trucks"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "MenuItem" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["truck-for-owner"] });
+        queryClient.invalidateQueries({ queryKey: ["trucks"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "StatusUpdate" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["trucks"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "MenuReview" }, () => {
+        if (editingTruckId) {
+          queryClient.invalidateQueries({ queryKey: ["truck-for-owner"] });
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [editingTruckId, queryClient]);
 
   const handleOwnerLogin = async (event: React.FormEvent) => {
     event.preventDefault();

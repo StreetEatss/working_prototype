@@ -1,6 +1,11 @@
 # React + TypeScript + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This app now reads data from Supabase. Provide the following environment variables before building:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+For seeding initial food trucks and menus into Supabase, run `node ./scripts/seedSupabase.mjs` with `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` set. The script uses the sample trucks defined in `scripts/seedData.js`.
 
 Currently, two official plugins are available:
 

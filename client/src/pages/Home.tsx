@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import L from "leaflet";
 import type { FoodTruck } from "../lib/api";
 import {
@@ -14,6 +14,7 @@ import {
   setStoredUserToken,
   fetchUserProfile,
 } from "../lib/api";
+import { supabase } from "../lib/supabaseClient";
 
 const statusCopy: Record<string, string> = {
   OPEN: "Open now",
@@ -73,6 +74,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function HomePage() {
+  const queryClient = useQueryClient();
   const { data, isLoading, error, refetch } = useQuery({ queryKey: ["trucks"], queryFn: fetchTrucks });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [statusNote, setStatusNote] = useState("");
@@ -123,6 +125,25 @@ export default function HomePage() {
       return () => clearTimeout(timeout);
     }
   }, [feedback]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("trucks-stream")
+      .on("postgres_changes", { event: "*", schema: "public", table: "FoodTruck" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["trucks"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "StatusUpdate" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["trucks"] });
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "MenuItem" }, () => {
+        queryClient.invalidateQueries({ queryKey: ["trucks"] });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const handleStatusSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -226,10 +247,11 @@ export default function HomePage() {
     }
   };
 
-  const handleUserLogout = () => {
+  const handleUserLogout = async () => {
     setStoredUserToken(null);
     setUserToken(null);
     setFeedback("Logged out successfully.");
+    await supabase.auth.signOut();
   };
 
   const mapCenter: [number, number] = selectedTruck?.defaultLatitude && selectedTruck?.defaultLongitude
