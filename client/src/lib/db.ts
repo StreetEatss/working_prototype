@@ -1,10 +1,14 @@
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
+const SUPABASE_KEY =
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
 
 const generateId = () => crypto.randomUUID();
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error("Missing Supabase configuration. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY.");
+  throw new Error(
+    "Missing Supabase configuration. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (or VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY for compatibility).",
+  );
 }
 
 const headers = {
@@ -138,12 +142,7 @@ function ensureTokenDecoded(token: string): { id: string } {
   }
 }
 
-async function seedDefaultData() {
-  const trucks = await supabaseRequest<any[]>("FoodTruck?select=id&limit=1");
-  if (trucks.length > 0) return;
-
-  const now = new Date().toISOString();
-  const seedTrucks = [
+const seedTrucks = [
     {
       name: "Tacos Don Memo",
       description: "Authentic Mexican tacos, burritos, and more. West side of 38th between Spruce & Locust, under Locust Walk bridge.",
@@ -200,61 +199,106 @@ async function seedDefaultData() {
     },
   ];
 
-  for (const truck of seedTrucks) {
-    const truckId = generateId();
-    await supabaseRequest("FoodTruck", {
-      method: "POST",
-      headers: { ...headers, Prefer: "return=minimal" },
-      body: JSON.stringify({
-        id: truckId,
-        name: truck.name,
-        description: truck.description,
-        cuisineType: truck.cuisineType,
-        imageUrl: truck.imageUrl,
-        venmoHandle: truck.venmoHandle,
-        defaultLocation: truck.defaultLocation,
-        defaultLatitude: truck.defaultLatitude,
-        defaultLongitude: truck.defaultLongitude,
-        typicalSchedule: null,
-        createdAt: now,
-        updatedAt: now,
-      }),
-    });
+async function seedDefaultData() {
+  try {
+    const trucks = await supabaseRequest<any[]>("FoodTruck?select=id&limit=1");
+    if (trucks.length > 0) return;
 
-    for (const item of truck.menuItems) {
-      await supabaseRequest("MenuItem", {
+    const now = new Date().toISOString();
+
+    for (const truck of seedTrucks) {
+      const truckId = generateId();
+      await supabaseRequest("FoodTruck", {
+        method: "POST",
+        headers: { ...headers, Prefer: "return=minimal" },
+        body: JSON.stringify({
+          id: truckId,
+          name: truck.name,
+          description: truck.description,
+          cuisineType: truck.cuisineType,
+          imageUrl: truck.imageUrl,
+          venmoHandle: truck.venmoHandle,
+          defaultLocation: truck.defaultLocation,
+          defaultLatitude: truck.defaultLatitude,
+          defaultLongitude: truck.defaultLongitude,
+          typicalSchedule: null,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      });
+
+      for (const item of truck.menuItems) {
+        await supabaseRequest("MenuItem", {
+          method: "POST",
+          headers: { ...headers, Prefer: "return=minimal" },
+          body: JSON.stringify({
+            id: generateId(),
+            name: item.name,
+            description: (item as any).description ?? null,
+            priceCents: item.priceCents ?? null,
+            imageUrl: null,
+            truckId,
+            isFeatured: (item as any).isFeatured ? 1 : 0,
+          }),
+        });
+      }
+
+      await supabaseRequest("StatusUpdate", {
         method: "POST",
         headers: { ...headers, Prefer: "return=minimal" },
         body: JSON.stringify({
           id: generateId(),
-          name: item.name,
-          description: (item as any).description ?? null,
-          priceCents: item.priceCents ?? null,
-          imageUrl: null,
           truckId,
-          isFeatured: (item as any).isFeatured ? 1 : 0,
+          status: "OPEN",
+          note: "Serving lunch until 3pm",
+          reporterName: "StreetEats Team",
+          latitude: truck.defaultLatitude,
+          longitude: truck.defaultLongitude,
+          reliability: 0.9,
+          source: "ADMIN",
+          createdAt: now,
+          isFlagged: 0,
         }),
       });
     }
-
-    await supabaseRequest("StatusUpdate", {
-      method: "POST",
-      headers: { ...headers, Prefer: "return=minimal" },
-      body: JSON.stringify({
-        id: generateId(),
-        truckId,
-        status: "OPEN",
-        note: "Serving lunch until 3pm",
-        reporterName: "StreetEats Team",
-        latitude: truck.defaultLatitude,
-        longitude: truck.defaultLongitude,
-        reliability: 0.9,
-        source: "ADMIN",
-        createdAt: now,
-        isFlagged: 0,
-      }),
-    });
+  } catch (error) {
+    console.warn("Supabase seeding skipped; using local demo data instead.", error);
   }
+}
+
+function buildDemoTrucks(): FoodTruck[] {
+  return seedTrucks.map((truck) => ({
+    id: generateId(),
+    name: truck.name,
+    description: truck.description,
+    cuisineType: truck.cuisineType,
+    imageUrl: truck.imageUrl,
+    venmoHandle: truck.venmoHandle,
+    defaultLocation: truck.defaultLocation,
+    defaultLatitude: truck.defaultLatitude,
+    defaultLongitude: truck.defaultLongitude,
+    typicalSchedule: null,
+    latestStatus: {
+      id: generateId(),
+      status: "OPEN",
+      note: "Serving lunch until 3pm",
+      reporterName: "StreetEats Team",
+      latitude: truck.defaultLatitude,
+      longitude: truck.defaultLongitude,
+      createdAt: new Date().toISOString(),
+      source: "ADMIN",
+      isFlagged: false,
+    },
+    menuItems: (truck.menuItems || []).map((item) => ({
+      id: generateId(),
+      name: item.name,
+      description: (item as any).description ?? null,
+      priceCents: item.priceCents ?? null,
+      imageUrl: null,
+      isFeatured: Boolean((item as any).isFeatured),
+      averageRating: null,
+    })),
+  }));
 }
 
 function buildMenuItems(rawItems: any[]): MenuItem[] {
@@ -275,46 +319,51 @@ function buildMenuItems(rawItems: any[]): MenuItem[] {
 }
 
 export async function fetchTrucks(): Promise<FoodTruck[]> {
-  await seedDefaultData();
+  try {
+    await seedDefaultData();
 
-  const trucks = await supabaseRequest<any[]>(
-    "FoodTruck?select=id,name,description,cuisineType,imageUrl,venmoHandle,defaultLocation,defaultLatitude,defaultLongitude,typicalSchedule,StatusUpdate(*),MenuItem(*,MenuReview(*))&order=name.asc"
-  );
+    const trucks = await supabaseRequest<any[]>(
+      "FoodTruck?select=id,name,description,cuisineType,imageUrl,venmoHandle,defaultLocation,defaultLatitude,defaultLongitude,typicalSchedule,StatusUpdate(*),MenuItem(*,MenuReview(*))&order=name.asc"
+    );
 
-  return trucks.map((truck) => {
-    const statuses = (truck.StatusUpdate || []) as any[];
-    const latestStatus = statuses
-      .filter((s) => !s.isFlagged)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+    return trucks.map((truck) => {
+      const statuses = (truck.StatusUpdate || []) as any[];
+      const latestStatus = statuses
+        .filter((s) => !s.isFlagged)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 
-    return {
-      id: truck.id,
-      name: truck.name,
-      description: truck.description,
-      cuisineType: truck.cuisineType,
-      imageUrl: truck.imageUrl,
-      venmoHandle: truck.venmoHandle,
-      defaultLocation: truck.defaultLocation,
-      defaultLatitude: truck.defaultLatitude,
-      defaultLongitude: truck.defaultLongitude,
-      typicalSchedule: truck.typicalSchedule,
-      latestStatus: latestStatus
-        ? {
-            id: latestStatus.id,
-            status: latestStatus.status,
-            note: latestStatus.note,
-            reporterName: latestStatus.reporterName,
-            latitude: latestStatus.latitude,
-            longitude: latestStatus.longitude,
-            createdAt: latestStatus.createdAt,
-            source: latestStatus.source,
-            userId: latestStatus.userId,
-            isFlagged: Boolean(latestStatus.isFlagged),
-          }
-        : null,
-      menuItems: buildMenuItems(truck.MenuItem || []),
-    } as FoodTruck;
-  });
+      return {
+        id: truck.id,
+        name: truck.name,
+        description: truck.description,
+        cuisineType: truck.cuisineType,
+        imageUrl: truck.imageUrl,
+        venmoHandle: truck.venmoHandle,
+        defaultLocation: truck.defaultLocation,
+        defaultLatitude: truck.defaultLatitude,
+        defaultLongitude: truck.defaultLongitude,
+        typicalSchedule: truck.typicalSchedule,
+        latestStatus: latestStatus
+          ? {
+              id: latestStatus.id,
+              status: latestStatus.status,
+              note: latestStatus.note,
+              reporterName: latestStatus.reporterName,
+              latitude: latestStatus.latitude,
+              longitude: latestStatus.longitude,
+              createdAt: latestStatus.createdAt,
+              source: latestStatus.source,
+              userId: latestStatus.userId,
+              isFlagged: Boolean(latestStatus.isFlagged),
+            }
+          : null,
+        menuItems: buildMenuItems(truck.MenuItem || []),
+      } as FoodTruck;
+    });
+  } catch (error) {
+    console.error("Falling back to demo data; Supabase fetch failed", error);
+    return buildDemoTrucks();
+  }
 }
 
 export async function postStatusUpdate(
