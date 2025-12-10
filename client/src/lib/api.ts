@@ -165,7 +165,7 @@ export const flagStatusUpdate = async (statusUpdateId: string): Promise<void> =>
   if (!token) {
     throw new Error("You must be logged in as an owner to flag content");
   }
-  return await db.flagStatusUpdate(statusUpdateId, token);
+  return await db.flagStatusUpdate(statusUpdateId);
 };
 
 export const flagMenuReview = async (reviewId: string): Promise<void> => {
@@ -173,7 +173,7 @@ export const flagMenuReview = async (reviewId: string): Promise<void> => {
   if (!token) {
     throw new Error("You must be logged in as an owner to flag content");
   }
-  return await db.flagMenuReview(reviewId, token);
+  return await db.flagMenuReview(reviewId);
 };
 
 export const fetchTruckStatusUpdates = async (truckId: string): Promise<StatusUpdate[]> => {
@@ -181,7 +181,7 @@ export const fetchTruckStatusUpdates = async (truckId: string): Promise<StatusUp
   if (!token) {
     throw new Error("You must be logged in as an owner");
   }
-  return await db.fetchTruckStatusUpdates(truckId, token);
+  return await db.fetchTruckStatusUpdates(truckId);
 };
 
 export const fetchTruckMenuReviews = async (truckId: string): Promise<MenuReview[]> => {
@@ -189,5 +189,5 @@ export const fetchTruckMenuReviews = async (truckId: string): Promise<MenuReview
   if (!token) {
     throw new Error("You must be logged in as an owner");
   }
-  return await db.fetchTruckMenuReviews(truckId, token);
+  return await db.fetchTruckMenuReviews(truckId);
 };
